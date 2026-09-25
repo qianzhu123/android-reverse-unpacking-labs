@@ -1,0 +1,35 @@
+{
+  "files": {
+    "libtarget_360.so": {
+      "sha256": "730c83a0add17456ca12ff8e1f1a1e17d5fa675b3775367456b722e4c66a7e82",
+      "size": 17916
+    },
+    "libtarget_360_variant.so": {
+      "sha256": "c0a320d442802bca9dbaca3938e8e2f4ae4856874dc274d747dbe5bb727cc308",
+      "size": 17916
+    },
+    "libtarget_orig.so": {
+      "sha256": "47b3f17ddb2de2326ac782f37acfd23f8a87ee95763a1a601cf2832e9db36411",
+      "size": 43888
+    },
+    "libtarget_stripped.so": {
+      "sha256": "d6085696984238f1c8a739fad67ac7a6e3687197370f112d2ee2e66be2487b51",
+      "size": 43888
+    },
+    "libtarget_orig_arm64.so": {
+      "sha256": "d816e50cc9b81c7d8a3620df5b3c8e0e43109fa4ef7639632a9ea73ecf816c41",
+      "size": 45848
+    }
+  },
+  "config": {
+    "clean_dir": "analysis_output",
+    "artifact_globs": [
+      "*unpacked.so",
+      "*_repaired.so",
+      "*_probe.so",
+      "_tmp_*.so",
+      "*.fixed.so"
+    ],
+    "artifacts": []
+  }
+}

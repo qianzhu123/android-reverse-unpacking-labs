@@ -1,0 +1,11 @@
+# 脱壳后"应该能找回"的锚点字符串（一行一个，# 开头为注释）
+# solve_360.py 会自动读取本文件来校验脱壳结果。
+# 换项目时改本文件即可，脚本本身不用动；删掉本文件则跳过锚点校验。
+360jiagu_lab_payload_marker_v1
+JiaguLab-2026-SECRET-KEY
+flag{jiagu_unpacking_is_fun}
+com/aegis/NativeLib
+getFlag
+JNI_OnLoad
+check_license
+blob_selfcheck
