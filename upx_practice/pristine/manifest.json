@@ -1,0 +1,37 @@
+{
+  "files": {
+    "libtarget_orig.so": {
+      "sha256": "8905e1ab96b838cbd92773511a812f69a8447824f4151985cdef26a8b9b611a9",
+      "size": 70012
+    },
+    "libtarget_orig_arm64.so": {
+      "sha256": "e09d80de8f6038fd1d0382db16dc552cebf5e2328555bebe64b74dc2d4eabe38",
+      "size": 71848
+    },
+    "libtarget_upx.so": {
+      "sha256": "435d54eabd2adb70271fc6dbb94d03838d4a70844d73bc7a03cf257364a07abf",
+      "size": 5348
+    },
+    "libtarget_upx_variant.so": {
+      "sha256": "d54438e4d4c2fe0364059955846618b3220a40064704f1498131b348f61badcb",
+      "size": 5348
+    },
+    "libtarget_stripped.so": {
+      "sha256": "3b2ef109a2c76e98bd662ff61e9982aa2e4ca873506dc1c131029c3855755d17",
+      "size": 70012
+    }
+  },
+  "config": {
+    "clean_dir": "analysis_output",
+    "artifact_globs": [
+      "*unpacked.so",
+      "*_repaired.so",
+      "*_probe.so",
+      "_tmp_*.so",
+      "*.fixed.so",
+      "*.unpacked.so",
+      "*_unpacked.so"
+    ],
+    "artifacts": []
+  }
+}
