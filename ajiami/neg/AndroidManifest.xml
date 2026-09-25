@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 负样本 manifest：故意声明「四大组件」分散在 classes2.dex（模拟真实 multidex App
+     里 AndroidX 的 Provider/Receiver 被分到次级 dex 的情况），用于守住 B7 不误报。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.demo.neg">
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />
+    <application android:allowBackup="true" android:label="Neg">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider android:name="com.demo.negsupport.NegProvider"
+                  android:authorities="com.demo.neg.provider" android:exported="false" />
+        <receiver android:name="com.demo.negsupport.NegReceiver" android:exported="false" />
+    </application>
+</manifest>

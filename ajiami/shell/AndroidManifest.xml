@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  壳的 manifest。对比 app/AndroidManifest.xml 看差别：
+    1) android:name 指向 com.ijiami.shell.ProxyApplication（Application 被替换）
+    2) 多出两个 meta-data —— 真实壳商用它记录壳版本/业务 Application 名，
+       也是我们做"静态识别"时最好用的免费特征（但可变种抹除，见 README §6）
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.demo.target">
+
+    <uses-sdk
+        android:minSdkVersion="24"
+        android:targetSdkVersion="36" />
+
+    <application
+        android:name="com.ijiami.shell.ProxyApplication"
+        android:allowBackup="true"
+        android:label="AJM-Lab-Packed">
+
+        <meta-data
+            android:name="ijiami_shell_version"
+            android:value="3.2.1" />
+        <meta-data
+            android:name="ijiami_real_application"
+            android:value="com.demo.target.MainApplication" />
+
+        <activity
+            android:name="com.demo.target.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
