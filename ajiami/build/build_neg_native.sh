@@ -51,10 +51,10 @@ if [ ! -f "$KEYSTORE" ]; then
   "$KEYTOOL" -genkeypair -v -keystore "$KEYSTORE" -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10950 -storepass "$KEY_STOREPASS" -keypass "$KEY_KEYPASS" -dname "CN=AJM Lab, OU=Lab, O=AJM, L=Lab, S=Lab, C=CN"
 fi
 "$ZIPALIGN" -f 4 build/neg/neg_native_unaligned.apk build/neg/neg_native_aligned.apk
-APK_SIGNER sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass pass:"$KEY_STOREPASS" --key-pass pass:"$KEY_KEYPASS" --out "samples/neg_native.apk" "build/neg/neg_native_aligned.apk"
+APK_SIGNER sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass pass:"$KEY_STOREPASS" --key-pass pass:"$KEY_KEYPASS" --out "samples/apks/neg_native.apk" "build/neg/neg_native_aligned.apk"
 
 echo
-echo "[+] samples/neg_native.apk  负样本：正常 native 应用（含合法 NDK .so）"
+echo "[+] samples/apks/neg_native.apk  负样本：正常 native 应用（含合法 NDK .so）"
 echo "[!] 必须被 detect.py 判为「未见已知加固特征」，且不得命中 B6/B7/B8/B11/B12/B13"
 
 echo
@@ -64,8 +64,8 @@ python tools/mkneg.py build/neg/raw_native.apk build/neg/app_so_packed_unaligned
     --dex classes.dex=build/neg/native.dex \
     --asset lib/arm64-v8a/libcalc.so=build/neg/libcalc_packed.so
 "$ZIPALIGN" -f 4 build/neg/app_so_packed_unaligned.apk build/neg/app_so_packed_aligned.apk
-APK_SIGNER sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass pass:"$KEY_STOREPASS" --key-pass pass:"$KEY_KEYPASS" --out "samples/app_so_packed.apk" "build/neg/app_so_packed_aligned.apk"
+APK_SIGNER sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass pass:"$KEY_STOREPASS" --key-pass pass:"$KEY_KEYPASS" --out "samples/apks/app_so_packed.apk" "build/neg/app_so_packed_aligned.apk"
 
 echo
-echo "[+] samples/app_so_packed.apk  正样本：SO 被加壳（.text 加密），应触发 B13"
+echo "[+] samples/apks/app_so_packed.apk  正样本：SO 被加壳（.text 加密），应触发 B13"
 echo "[!] 必须被 detect.py 判为「疑似 SO 加壳 / 自实现 Linker」，见 tools/check_negatives.py"

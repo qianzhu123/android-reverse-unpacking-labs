@@ -43,25 +43,32 @@ def sha256_file(p):
 
 
 def iter_sample_files():
+    """递归遍历 samples/ 下所有文件，返回 (相对路径, 绝对路径)。
+    相对路径以 samples/ 为根（如 'apks/app_orig.apk'、'dex/classes_orig.dex'、
+    'payloads/brand_res_v3.dat'），作为 MANIFEST 的 key，使 samples/ 内的
+    apks/dex/payloads 子目录也能被备份 / 还原。"""
     if not os.path.isdir(SAMPLES):
         return
-    for name in sorted(os.listdir(SAMPLES)):
-        full = os.path.join(SAMPLES, name)
-        if os.path.isfile(full):
-            yield name, full
+    for root, _dirs, files in os.walk(SAMPLES):
+        for fn in sorted(files):
+            full = os.path.join(root, fn)
+            rel = os.path.relpath(full, SAMPLES).replace(os.sep, '/')
+            yield rel, full
 
 
 def cmd_backup():
     os.makedirs(PRISTINE, exist_ok=True)
     manifest = {}
-    for name, full in iter_sample_files():
-        shutil.copy2(full, os.path.join(PRISTINE, name))
-        manifest[name] = sha256_file(full)
+    for rel, full in iter_sample_files():
+        dst = os.path.join(PRISTINE, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(full, dst)
+        manifest[rel] = sha256_file(full)
     with open(MANIFEST, 'w', encoding='utf-8') as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
     print('[backup] %d 个文件 -> %s' % (len(manifest), PRISTINE))
     for k in sorted(manifest):
-        print('  %-34s %s' % (k, manifest[k]))
+        print('  %-40s %s' % (k, manifest[k]))
     return 0
 
 
@@ -72,22 +79,23 @@ def cmd_status():
     manifest = json.load(open(MANIFEST, encoding='utf-8'))
     print('[status] 对照 MANIFEST（%d 项）' % len(manifest))
     ok = diff = miss = extra = 0
-    for name, gold in sorted(manifest.items()):
-        cur = os.path.join(SAMPLES, name)
+    for rel, gold in sorted(manifest.items()):
+        cur = os.path.join(SAMPLES, rel)
         if not os.path.exists(cur):
-            print('  MISSING  %s' % name)
+            print('  MISSING  %s' % rel)
             miss += 1
             continue
         cur_h = sha256_file(cur)
         if cur_h == gold:
-            print('  OK       %s' % name)
+            print('  OK       %s' % rel)
             ok += 1
         else:
-            print('  DIFF     %s  (%s.. != %s..)' % (name, cur_h[:12], gold[:12]))
+            print('  DIFF     %s  (%s.. != %s..)' % (rel, cur_h[:12], gold[:12]))
             diff += 1
-    for name, _ in iter_sample_files():
-        if name not in manifest:
-            print('  EXTRA    %s' % name)
+    live = dict(iter_sample_files())
+    for rel in sorted(live):
+        if rel not in manifest:
+            print('  EXTRA    %s' % rel)
             extra += 1
     print('=> OK=%d  DIFF=%d  MISSING=%d  EXTRA=%d' % (ok, diff, miss, extra))
     return 0 if (diff == 0 and miss == 0) else 1
@@ -99,17 +107,18 @@ def cmd_restore(force):
         return 1
     manifest = json.load(open(MANIFEST, encoding='utf-8'))
     n = 0
-    for name, gold in sorted(manifest.items()):
-        src = os.path.join(PRISTINE, name)
-        dst = os.path.join(SAMPLES, name)
+    for rel, gold in sorted(manifest.items()):
+        src = os.path.join(PRISTINE, rel)
+        dst = os.path.join(SAMPLES, rel)
         if not os.path.exists(src):
-            print('  SKIP(无 pristine 副本) %s' % name)
+            print('  SKIP(无 pristine 副本) %s' % rel)
             continue
         if os.path.exists(dst) and not force and sha256_file(dst) == gold:
             continue
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copy2(src, dst)
         n += 1
-        print('  restore %s' % name)
+        print('  restore %s' % rel)
     print('=> 已恢复 %d 个文件' % n)
     return 0
 

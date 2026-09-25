@@ -11,11 +11,11 @@ detect.py — 加固判定（禁止偷懒版）
   判据 B（结构/统计）   dex 空方法率 + 高熵 asset + Application 是否为代理 + 业务类缺失
 
 用法：
-  python tools/detect.py samples/app_orig.apk
-  python tools/detect.py samples/app_packed_v2.apk
-  python tools/detect.py samples/app_packed_v2_variant.apk
-  python tools/detect.py samples/extracted_v2.dex --json
-  python tools/detect.py samples/*.apk            # 一次对比多个
+  python tools/detect.py samples/apks/app_orig.apk
+  python tools/detect.py samples/apks/app_packed_v2.apk
+  python tools/detect.py samples/apks/app_packed_v2_variant.apk
+  python tools/detect.py samples/dex/extracted_v2.dex --json
+  python tools/detect.py samples/apks/*.apk            # 一次对比多个
 """
 
 import json
@@ -233,7 +233,7 @@ def _invoke_targets(insns):
 def _tiny_call_hubs(dx, max_units=16, min_callers=2, min_hub_units=30):
     """找出「多个极短方法 <> 汇聚到一个大方法」的结构 —— DEX VMP 的典型形状。
 
-    实测数据（samples/app_vmp.apk）：
+    实测数据（samples/apks/app_vmp.apk）：
         被保护的业务方法  com.demo.vmapp.VmBusiness.mix/twist   units=11，各 1 个 invoke
         解释器            com.ijiami.vmp.Vmp.run                units=196（大，含调度循环）
     据此定了三条硬约束，缺一条都会在普通 App 上误报：
@@ -581,7 +581,7 @@ def verdict(f):
                      % (os.path.basename(top['name']), '；'.join(top['anomalies'][:3])))
     if sos and not so_bad:
         notes.append('%d 个 SO 已做 ELF 结构检查，未见加壳/自定义 Linker 信号；'
-                     '注意 SO VMP 静态无法确认，仍需动态 trace（README §2.6-2.7）' % len(sos))
+                     '注意 SO VMP 静态无法确认，仍需动态 trace（SCRIPT.md §2 / §3.6：SO · B13）' % len(sos))
 
     # ---- 结论 ladder
     has_b3 = any(r.startswith(('B3 ', 'B3*')) for r in rules)

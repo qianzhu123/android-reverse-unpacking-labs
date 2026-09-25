@@ -51,8 +51,8 @@ for n in neg_multidex neg_highentropy; do
 done
 
 echo
-echo "[+] samples/neg_multidex.apk     负样本：多 dex，组件类在次级 dex"
-echo "[+] samples/neg_highentropy.apk  负样本：多 dex + 合法高熵 asset"
+echo "[+] samples/apks/neg_multidex.apk     负样本：多 dex，组件类在次级 dex"
+echo "[+] samples/apks/neg_highentropy.apk  负样本：多 dex + 合法高熵 asset"
 echo "[!] 二者必须被 detect.py 判为「未以『已加固』开头」，见 tools/check_negatives.py"
 
 echo

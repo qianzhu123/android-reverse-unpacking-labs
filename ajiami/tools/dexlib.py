@@ -144,7 +144,7 @@ class Dex(object):
         顺序不能反！spec 是：
             signature = sha1(data[32:])
             checksum  = adler32(data[12:])      ← 覆盖的是含 signature 的区域
-        如果先算 checksum 再改 signature，checksum 就对应了旧的 license ... 详见 README §7.3：
+        如果先算 checksum 再改 signature，checksum 就对应了旧的 license ... 详见 SCRIPT.md §5（verify.py 校验）/ MANUAL.md §5（校验）：
         本机第一次实现就是这个顺序错误，导致还原出的 dex 在 dexdump 下报 Bad checksum。
         """
         if len(self.data) != self.file_size:

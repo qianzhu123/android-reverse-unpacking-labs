@@ -3,7 +3,7 @@
 """
 unpack_v1.py — 一代加固脱壳（静态、无需真机）
 
-流程（每一步都打印出来，对应 README 里手动复现的步骤）：
+流程（每一步都打印出来，对应 MANUAL.md §4.1 手动复现的步骤）：
   1) 从 APK 里取出 assets/ijm_payload.bin（或直接使用解出的 payload 文件）
   2) 解析头部：8 字节魔数 'AJM\\x01' + 4 字节小端 = 原始 dex 长度
   3) 对剩余字节解密（与 packer 对称）
@@ -11,9 +11,9 @@ unpack_v1.py — 一代加固脱壳（静态、无需真机）
   5) 写出还原 dex，并与黄金样本 classes_orig.dex 做 sha256 对照
 
 用法：
-  python tools/unpack_v1.py samples/app_packed_v1.apk analysis_output/unpack_v1_dex.dex
-  python tools/unpack_v1.py samples/app_packed_v1.apk analysis_output/unpack_v1_dex.dex --pristine samples/classes_orig.dex
-  python tools/unpack_v1.py samples/payload_v1.bin analysis_output/unpack_v1_dex.dex
+  python tools/unpack_v1.py samples/apks/app_packed_v1.apk analysis_output/unpack_v1_dex.dex
+  python tools/unpack_v1.py samples/apks/app_packed_v1.apk analysis_output/unpack_v1_dex.dex --pristine samples/dex/classes_orig.dex
+  python tools/unpack_v1.py samples/payloads/payload_v1.bin analysis_output/unpack_v1_dex.dex
 """
 
 import argparse

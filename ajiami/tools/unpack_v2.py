@@ -3,19 +3,19 @@
 """
 unpack_v2.py — 二代/三代「类抽取」脱壳（静态还原 method body）
 
-要点（呼应 README 的教学）：
+要点（呼应 SCRIPT.md §4.2 / MANUAL.md §4.2 的教学）：
   二代加固把每个方法的 code_item.insns 抽空成 nop，真实指令存在 assets 侧表。
   这里把侧表读回来，按 (code_off, 长度) 精准填回对应位置，再重算 checksum/signature。
 
   三种输入形态都能处理：
     a) APK：自动扫描 assets 里带 'AJMT' 魔数的文件（不靠文件名！v3 把文件名改了）
     b) dex + 侧表文件
-    c) 已经解出的散装 dex（samples/extracted_v2.dex）+ samples/codetable_v2.bin
+    c) 已经解出的散装 dex（samples/dex/extracted_v2.dex）+ samples/payloads/codetable_v2.bin
 
 用法：
-  python tools/unpack_v2.py samples/app_packed_v2.apk analysis_output/unpack_v2_dex.dex --pristine samples/classes_merged_orig.dex
-  python tools/unpack_v2.py samples/app_packed_v3.apk analysis_output/unpack_v3_dex.dex --pristine samples/classes_merged_orig.dex
-  python tools/unpack_v2.py samples/extracted_v2_variant.dex samples/codetable_v2_variant.bin analysis_output/unpack_v2_variant_dex.dex --pristine build/variant/merged_orig_variant.dex
+  python tools/unpack_v2.py samples/apks/app_packed_v2.apk analysis_output/unpack_v2_dex.dex --pristine samples/dex/classes_merged_orig.dex
+  python tools/unpack_v2.py samples/apks/app_packed_v3.apk analysis_output/unpack_v3_dex.dex --pristine samples/dex/classes_merged_orig.dex
+  python tools/unpack_v2.py samples/dex/extracted_v2_variant.dex samples/payloads/codetable_v2_variant.bin analysis_output/unpack_v2_variant_dex.dex --pristine build/variant/merged_orig_variant.dex
 """
 
 import argparse

@@ -5,8 +5,8 @@
 #   bash build/build_target.sh
 #
 # 产物：
-#   samples/classes_orig.dex    黄金对照样本（后面所有判断都以它为基准）
-#   samples/app_orig.apk        未加固 APK（签名、zipalign，可被 adb install）
+#   samples/dex/classes_orig.dex    黄金对照样本（后面所有判断都以它为基准）
+#   samples/apks/app_orig.apk        未加固 APK（签名、zipalign，可被 adb install）
 set -e
 source build/env.sh
 cd "$ROOT_W"
@@ -24,7 +24,7 @@ rm -f build/target/dex/target.zip
 D8 --lib "$ANDROID_JAR" --output build/target/dex/target.zip \
    --min-api $MIN_SDK \
    build/target/classes/com/demo/target/*.class
-"$PY" tools/apkutil.py extract-dex build/target/dex/target.zip samples/classes_orig.dex
+"$PY" tools/apkutil.py extract-dex build/target/dex/target.zip samples/dex/classes_orig.dex
 
 echo "== [3/5] aapt2 link: manifest -> apk 骨架 =="
 rm -f build/target/app_orig_raw.apk
@@ -35,7 +35,7 @@ rm -f build/target/app_orig_raw.apk
 
 echo "== [4/5] 塞入 classes.dex =="
 "$PY" tools/apkutil.py inject-dex build/target/app_orig_raw.apk \
-  samples/classes_orig.dex build/target/app_orig_unaligned.apk
+  samples/dex/classes_orig.dex build/target/app_orig_unaligned.apk
 "$ZIPALIGN" -f 4 build/target/app_orig_unaligned.apk build/target/app_orig_aligned.apk
 
 echo "== [5/5] 签名 =="
@@ -47,9 +47,9 @@ if [ ! -f "$KEYSTORE" ]; then
 fi
 APK_SIGNER sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
   --ks-pass pass:"$KEY_STOREPASS" --key-pass pass:"$KEY_KEYPASS" \
-  --out samples/app_orig.apk build/target/app_orig_aligned.apk
-APK_SIGNER verify --print-certs samples/app_orig.apk | tail -3
+  --out samples/apks/app_orig.apk build/target/app_orig_aligned.apk
+APK_SIGNER verify --print-certs samples/apks/app_orig.apk | tail -3
 
 echo
-echo "[+] samples/classes_orig.dex  原始 dex（黄金对照）"
-echo "[+] samples/app_orig.apk      未加固 APK"
+echo "[+] samples/dex/classes_orig.dex  原始 dex（黄金对照）"
+echo "[+] samples/apks/app_orig.apk      未加固 APK"

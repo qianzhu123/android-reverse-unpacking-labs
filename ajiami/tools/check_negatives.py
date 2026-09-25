@@ -3,7 +3,7 @@
 """
 check_negatives.py — 正负样本回归断言
 
-为什么必须有它（见 README §6.1 / §6.2）：
+为什么必须有它（见 SCRIPT.md §3.8 / MANUAL.md §3.8 负样本回归）：
     本项目所有样本都是自己合成的，只拿它们做"能检出"的验证属于循环论证。
     负样本的作用是**证伪** —— 它们是专门为触发历史误报而设计的陷阱；
     而本脚本让防止回归变成**自动化**，而不依赖"我还记着"。
@@ -28,23 +28,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 正向样本：期望结论（写前缀即可，用 startswith 匹配）
 POSITIVE = [
-    ('samples/app_packed_v1.apk', '已加固：DEX 整体加密型（一代）'),
-    ('samples/app_packed_v2.apk', '已加固：类抽取型（二代及以上）'),
-    ('samples/app_packed_v3.apk', '已加固：类抽取型（二代及以上）'),
-    ('samples/app_packed_v2_variant.apk', '已加固：类抽取型（二代及以上）'),
-    ('samples/app_vmp.apk', '疑似 DEX VMP'),
-    ('samples/app_so_packed.apk', '疑似 SO 加壳'),
+    ('samples/apks/app_packed_v1.apk', '已加固：DEX 整体加密型（一代）'),
+    ('samples/apks/app_packed_v2.apk', '已加固：类抽取型（二代及以上）'),
+    ('samples/apks/app_packed_v3.apk', '已加固：类抽取型（二代及以上）'),
+    ('samples/apks/app_packed_v2_variant.apk', '已加固：类抽取型（二代及以上）'),
+    ('samples/apks/app_vmp.apk', '疑似 DEX VMP'),
+    ('samples/apks/app_so_packed.apk', '疑似 SO 加壳'),
 ]
 
 # 负向样本：绝不允许被判成『已加固』；并明确禁止哪些判据命中
 NEGATIVE = [
-    ('samples/neg_multidex.apk', ['B6', 'B7', 'B11', 'B12'],
+    ('samples/apks/neg_multidex.apk', ['B6', 'B7', 'B11', 'B12'],
      '多 dex：manifest 声明的组件类在 classes2.dex'),
-    ('samples/neg_highentropy.apk', ['B6', 'B7', 'B11', 'B12'],
+    ('samples/apks/neg_highentropy.apk', ['B6', 'B7', 'B11', 'B12'],
      '多 dex + 合法高熵 asset（守住 B1 不得单独定性）'),
-    ('samples/app_orig.apk', ['B6', 'B7', 'B11', 'B12'],
+    ('samples/apks/app_orig.apk', ['B6', 'B7', 'B11', 'B12'],
      '原始未加固 APK（历史负样本）'),
-    ('samples/neg_native.apk', ['B6', 'B7', 'B8', 'B11', 'B12', 'B13'],
+    ('samples/apks/neg_native.apk', ['B6', 'B7', 'B8', 'B11', 'B12', 'B13'],
      '正常 native 应用：含合法 NDK .so，不得因 SO/动态加载判壳（锁 B13/B12 干净路径）'),
 ]
 

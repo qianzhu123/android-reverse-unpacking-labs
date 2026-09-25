@@ -9,8 +9,8 @@ verify.py — 脱壳还原的量化验证（不只看"能不能解开"）。
   3) 字节差异：若不一致，给出差异字节数 + 首个差异偏移（帮助定位还原错了哪里）
 
 用法：
-  python tools/verify.py analysis_output/unpack_v1_dex.dex samples/classes_orig.dex
-  python tools/verify.py analysis_output/unpack_v2_dex.dex samples/classes_merged_orig.dex
+  python tools/verify.py analysis_output/unpack_v1_dex.dex samples/dex/classes_orig.dex
+  python tools/verify.py analysis_output/unpack_v2_dex.dex samples/dex/classes_merged_orig.dex
   python tools/verify.py analysis_output/unpack_v2_variant_dex.dex build/variant/merged_orig_variant.dex
 """
 

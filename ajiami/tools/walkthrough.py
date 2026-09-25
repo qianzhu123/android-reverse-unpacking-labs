@@ -8,10 +8,10 @@ walkthrough.py — 把"脱壳还原"拆成可在十六进制编辑器里手动�
 也方便验证我们写的脚本没有"偷偷"做超出手算范围的事。
 
 用法：
-    python tools/walkthrough.py samples/app_packed_v1.apk
-    python tools/walkthrough.py samples/app_packed_v2.apk
-    python tools/walkthrough.py samples/app_packed_v3.apk
-    python tools/walkthrough.py samples/app_packed_v2_variant.apk
+    python tools/walkthrough.py samples/apks/app_packed_v1.apk
+    python tools/walkthrough.py samples/apks/app_packed_v2.apk
+    python tools/walkthrough.py samples/apks/app_packed_v3.apk
+    python tools/walkthrough.py samples/apks/app_packed_v2_variant.apk
 """
 
 import os

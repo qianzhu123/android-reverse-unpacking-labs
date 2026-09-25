@@ -10,7 +10,7 @@ packer.py — 「类爱加密」三代加壳器（离线版）。
 
 设计原则（遵守 PROMPT 的要求）：
   * 每一步产出的字节结构都能用十六进制编辑器手动定位（ see tools/walkthrough.py）
-  * 加壳前的 dex 与脱壳后还原的 dex 必须能逐字节对得上 -> 用 samples/classes_orig.dex 做黄金对照
+  * 加壳前的 dex 与脱壳后还原的 dex 必须能逐字节对得上 -> 用 samples/dex/classes_orig.dex 做黄金对照
   * 脚本只是手动步骤的自动化，不是唯一答案
 
 用法：

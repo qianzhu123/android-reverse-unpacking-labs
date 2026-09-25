@@ -12,7 +12,7 @@ classes2.dex，模拟真实 App 里 AndroidX Provider/Receiver 被分到次级 d
   python tools/mkneg.py <骨架apk> <输出apk> --dex classes.dex=<p> --dex classes2.dex=<p> [--asset <zip内名>=<本地路径>]
 
 示例（见 build/build_negatives.sh）：
-  python tools/mkneg.py build/neg/raw.apk samples/neg_multidex.apk \
+  python tools/mkneg.py build/neg/raw.apk samples/apks/neg_multidex.apk \
       --dex classes.dex=build/neg/biz.dex --dex classes2.dex=build/neg/lib.dex
 """
 
