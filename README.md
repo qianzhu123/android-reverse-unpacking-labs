@@ -57,18 +57,18 @@ android-reverse/
 ├── .gitignore
 ├── PROMPT.md            # reusable prompt template for spinning up a new lab
 ├── 360jiagu/            # 360-style native hardening (modeled as a modified UPX)
-│   ├── README.md
+│   ├── SCRIPT.md  MANUAL.md
 │   ├── src/             # libtarget source (target.c, policy_inc.h)
 │   ├── tools/           # detectors, solvers, variant/negative generators, reset_lab.py
 │   ├── build/           # build_android.sh, pack.sh, locate.sh, gen_policy.py
 │   ├── pristine/        # baseline .so + sha256 manifest
 │   └── analysis_output/ # detection / dump / solve reports
 ├── upx_practice/        # vanilla UPX + a feature-rewritten variant
-│   ├── README.md
+│   ├── SCRIPT.md  MANUAL.md
 │   ├── src/ tools/ build/ pristine/ analysis_output/
 └── ajiami/              # Aijiami-style DEX hardening: 3 generations + string-obf variant
-    ├── README.md
-    ├── app/  shell/  neg/  vmp/  samples/
+    ├── SCRIPT.md  MANUAL.md
+    ├── app/  shell/  neg/  vmp/  samples/{apks,dex,payloads}/
     ├── tools/           # detect.py, unpack_v1/v2/v3.py, check_negatives.py, ...
     ├── build/           # build_*.sh, pack.sh, env.sh, lab.keystore
     ├── pristine/  logs/  analysis_output/
@@ -89,8 +89,8 @@ android-reverse/
 | `upx_practice` | vanilla UPX + a **feature-rewritten variant** | self-built NDK `.so` | scoring detector, dump-and-fix, negative / section-stripped samples |
 | `ajiami` | Aijiami DEX hardening — gen-1 (whole-DEX encryption) → gen-2 (class extraction) → gen-3 + string-obfuscation variant | self-built Android app + shell | 3-generation detection, script + manual unpack, negative-sample regression |
 
-Each lab's `README.md` is the **single source of truth** for that lab and follows the
-fixed `§0`–`§12` skeleton described below.
+Each lab's docs are `SCRIPT.md` (script route) + `MANUAL.md` (manual route) — two
+parallel documents sharing a fixed `§0`–`§8` skeleton.
 
 ---
 
@@ -98,13 +98,13 @@ fixed `§0`–`§12` skeleton described below.
 
 These rules are enforced across all labs (originally captured in `PROMPT.md`):
 
-- **One README per lab, fixed skeleton.** `§0` intro → `§1` knowledge points → `§2`
-  detection → `§3` script solution → `§4` manual solution → `§5` fallback/dynamic →
-  `§6` decision tree → `§7` verification criteria → `§8` pitfalls → `§9` repeatable
-  practice (`pristine/` + `reset_lab.py`) → `§10` command cheatsheet → `§11` file index →
-  `§12` one-liner to remember.
+- **Two parallel docs per lab, fixed `§0`–`§8` skeleton.** `SCRIPT.md` (script route:
+  detect / unpack / verify tools, run end-to-end) + `MANUAL.md` (manual route:
+  `unzip` / `aapt2` / `xxd` / entropy, byte-for-byte reproduction). §0 intro → §1 project
+  layout → §2 knowledge points → §3 detection → §4 unpack → §5 verification → §6 decision
+  tree → §7 repeatable practice (`pristine/` + `reset_lab.py`) → §8 pitfalls & speed-ref.
 - **Zero absolute paths.** No `D:\…`, `C:\Users\…`, `/d/…`, or `/c/Users/…` anywhere in
-  scripts, build config, source, READMEs (except `cd` examples), or generated reports.
+  scripts, build config, source, docs (except `cd` examples), or generated reports.
   The project root is always derived from the script's own location.
 - **Negative samples + bidirectional regression assertions (anti circular-reasoning).**
   A detector trained and tested only on its own hand-made samples is trivially correct.
@@ -145,7 +145,7 @@ These rules are enforced across all labs (originally captured in `PROMPT.md`):
 
 ## How to run a lab
 
-Pick a lab and follow its `README.md §0.1` ("three-minute run"). The pattern is
+Pick a lab and follow its `SCRIPT.md` / `MANUAL.md` §0.1 ("three-minute run"). The pattern is
 identical for all of them:
 
 ```bash
@@ -167,7 +167,7 @@ python tools/check_so_samples.py
 
 Replace the detector/solver names with those of the lab you are in
 (`detect_packer.py` / `solve_variant.py` for `upx_practice`;
-`detect.py` / `unpack_v1.py` … for `ajiami`). Each lab README documents its exact
+`detect.py` / `unpack_v1.py` … for `ajiami`). Each lab's `SCRIPT.md` / `MANUAL.md` document its exact
 commands and real, pasted output.
 
 ---
@@ -176,9 +176,9 @@ commands and real, pasted output.
 
 1. Create a new folder under the repository root.
 2. Copy the structure (`src/`, `tools/`, `build/`, `pristine/`, `analysis_output/`,
-   `README.md`).
-3. Follow `PROMPT.md` — it is a reusable prompt that fills in the topic, the `§0`–`§12`
-   skeleton, the negative-sample discipline, and the four-tier toolchain resolution.
+   `SCRIPT.md` + `MANUAL.md`).
+3. Follow `PROMPT.md` — it is a reusable prompt that fills in the topic, the two-doc
+   `§0`–`§8` skeleton, the negative-sample discipline, and the four-tier toolchain resolution.
 4. Keep the protector within the *packer / shell* scope (UPX & variants, compression
    shells, memory dump, OEP, ELF Fix, whole-DEX encryption, class extraction). Code
    obfuscation / string protection / VMP teaching is out of scope for this repo — keep it
