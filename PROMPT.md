@@ -57,6 +57,31 @@
 > **唯一例外**：README 里的 `cd` 示例可以直接写本机实际路径（如 `cd <项目名>`），
 > 图的是能复制了直接执行；但脚本 / 构建配置 / 生成产物里一律不允许。
 
+> ⚠️ **GitHub 提交与部署约定**（硬性 —— 本仓库公开，作为作品集/分享）
+> 1. **仓库拓扑**：本仓库是「加固练习工程 + 本提示词」的 monorepo；若某子项目自带 `.git`
+>    （如混淆方向的 `ollvm/`），必须在根 `.gitignore` 用 `/<子目录>/` 排除，绝不与主仓库混进同一棵历史。
+> 2. **提交纪律**：根目录 `git init`；按「基础设施 → 各工程」拆分提交，不要一锅端——
+>    先提交 `README.md` / `LICENSE` / `.gitignore` / `PROMPT.md`，再分别提交每个工程；
+>    提交信息用「类型(范围): 一句话」风格（如 `feat(360jiagu): ...`）。
+> 3. **路径脱敏**：公开前必须把 `D:\...`、`C:\Users\...` 这类真实盘符/用户目录路径
+>    改成相对或通用写法（本提示词的「零绝对路径约定」已覆盖，提交前再全盘复查一遍）。
+> 4. **不提交的东西**：第三方/本地二进制（如 UPX 打包器 `*.exe`）与签名 `*.keystore`
+>    一律不进仓库，也不要在文档里解释它们。**只保留 `build/*.sh` / `build/*.py` /
+>    `build/env.sh` 作为工具脚本**，生成物目录用 `**/build/<name>/` 忽略
+>    （坑：`build/v1/` 只匹配根级 `build/v1/`，匹配不到 `ajiami/build/v1/`，
+>    必须用 `**/build/<name>/` 才能忽略各工程下的生成子目录）。
+> 5. **LICENSE**：公开仓库用 MIT；版权行署名 = 本机 git 身份（`git config user.name`）。
+> 6. **GitHub 元数据（公开必填）**：
+>    - **About 描述**：写**英文**一句话定位（建模说明 + 方法特征），例如
+>      `Educational Android unpacking & packer-hardening labs — self-built, evidence-based, deterministic-first reverse-engineering study materials.`
+>    - **Topics**：英文小写标签，至少覆盖 `android` `reverse-engineering` `unpacking`
+>      `packers` `dex` `elf` `ndk` `anti-tamper` `static-analysis` `educational`。
+> 7. **推送**：本机 `gh` 版本不支持 `gh repo create --topic` / `--branch`。
+>    建仓库+推送用 `gh repo create <name> --public --description "..." --source . --push`
+>    （自动建 `origin` 并推当前分支）；Topics 走 REST：把 `{"names":[...]}` 写进 JSON 文件后执行
+>    `gh api repos/<owner>/<repo>/topics -X PUT -H "Accept: application/vnd.github.mercy-preview+json" --input <file>`
+>    （`-F names='[...]'` 会被当成字符串报 422，必须用 `--input` 传真 JSON）。
+
 ---
 
 ## 提示词正文
