@@ -1,0 +1,46 @@
+# ============================================================
+#  Android Reverse-Engineering / Unpacking study repo
+#  (360jiagu, ajiami, upx_practice + shared PROMPT.md)
+#  ollvm is an INDEPENDENT git repo -> excluded at the bottom.
+# ============================================================
+
+# ---- Generated outputs (never commit) ----
+analysis_output/
+logs/
+__pycache__/
+*.pyc
+
+# Build outputs: keep build/*.sh, build/*.py, build/env.sh as lab tooling;
+# ignore only the generated sub-directories. Use **/ so the pattern matches at
+# any depth (each lab nests them under its own folder, e.g. ajiami/build/v1/).
+**/build/_probe/
+**/build/merged/
+**/build/neg/
+**/build/shell/
+**/build/target/
+**/build/v1/
+**/build/v2/
+**/build/v3/
+**/build/variant/
+**/build/vmp/
+
+# Signing keystore must never be committed
+*.keystore
+
+# ---- Third-party / local binaries ----
+# UPX packer binaries (upx.exe at project root, upx396.exe in tools/) are not committed.
+*.exe
+
+# Local environment overrides
+local.properties
+*.local
+
+# ---- IDE / OS junk ----
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- Exclude the independent ollvm repo (own git history) ----
+/ollvm/
