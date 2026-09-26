@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-main.py — unpacker.exe 的入口。单 exe 多命令：
+main.py — unpacker.exe 的入口。
 
-  unpacker.exe analyze  <文件>... [--json] [--verify]   # 判定（只读体检）
-  unpacker.exe unpack   <文件> [-o 目录] [--pristine X] # 解固（判定→路由→验证）
-  unpacker.exe regression [--json]                       # 全仓回归矩阵
-  unpacker.exe gui                                        # 无参数拖拽/双击友好入口
+  unpacker.exe                    # 双击/无参数 → 打开图形界面（拖放 + 按钮）
+  unpacker.exe gui                # 同上（显式）
+  unpacker.exe analyze  <文件>... # CLI：判定（只读体检）
+  unpacker.exe unpack   <文件>    # CLI：解固（判定→路由→验证）
+  unpacker.exe regression         # CLI：全仓回归矩阵
 
 与源码版（unpacker/*.py）的差异——exe 打包后没有仓库源码目录，因此：
   ① 仓库根的定位：命令行 --repo > 环境变量 ANDROID_REVERSE_LABS >
-     exe 同目录 > exe 同目录下按名找 360jiagu/upx_practice/ajiami > 仓库内打包兜底。
-     找不到仓库时：analyze 的 SO 管线可用（检测逻辑已随包打进 exe），
-     但 DEX 管线与 unpack 解固路由依赖 lab 模块，会明确报错并给出设置方法。
+     exe 同目录向上 4 级找 360jiagu/upx_practice/ajiami > exe 内置兜底副本。
+     找不到仓库时：SO 判定可用（检测逻辑已随包打进 exe），DEX 管线与解固路由
+     依赖 lab 模块，用内置副本兜底（不保证与 lab 最新代码同步）。
   ② 打包时用 --add-data 把三个 lab 的 tools/*.py 一起收进 exe，
      优先用内置副本；仓库存在时用仓库的（保证与 lab 同步更新）。
 
@@ -88,16 +89,27 @@ def main(argv=None):
             return 2
 
     if not argv or argv[0] in ('-h', '--help', 'help'):
-        print(__doc__)
-        print('用法示例（在仓库根目录放 exe 时）：')
-        print('  unpacker.exe analyze 360jiagu/libtarget_360_variant.so')
-        print('  unpacker.exe unpack 360jiagu/libtarget_360_variant.so --pristine 360jiagu/libtarget_orig.so')
-        print('  unpacker.exe regression')
+        # 无参数：exe 双击 → 直接开 GUI（这正是"打开一个界面"的主入口）
+        repo, err = _setup(repo_arg)
+        if err:
+            print('[!] ' + err)
+            input('回车退出...')
+            return 2
+        import gui
+        gui.launch(repo)
         return 0
 
     cmd = argv[0]
     rest = argv[1:]
 
+    if cmd in ('gui', '--gui'):
+        repo, err = _setup(repo_arg)
+        if err:
+            print('[!] ' + err)
+            return 2
+        import gui
+        gui.launch(repo)
+        return 0
     if cmd == 'analyze':
         repo, err = _setup(repo_arg)
         if err:
@@ -119,26 +131,8 @@ def main(argv=None):
             return 2
         import regression
         return regression.main_with_repo(rest, repo)
-    elif cmd == 'gui':
-        # 双击/拖拽兜底：把 exe 当"对单文件做判定"用
-        repo, err = _setup(repo_arg)
-        if err:
-            print('[!] ' + err)
-            return 2
-        files = rest
-        if not files:
-            print('[*] 未给文件。把文件拖到 exe 图标上，或：unpacker.exe gui <文件>...')
-            input('回车退出...')
-            return 0
-        import analyzer
-        rc = analyzer.main_with_repo(files, repo)
-        try:
-            input('\n回车退出...')
-        except EOFError:
-            pass
-        return rc
     else:
-        # 未知子命令：当作文件路径直接判定（与 gui 相同语义，兼容拖拽）
+        # 未知子命令：当作文件路径直接判定（把文件拖到 exe 图标上的场景）
         repo, err = _setup(repo_arg)
         if err:
             print('[!] ' + err)
@@ -152,7 +146,7 @@ def main(argv=None):
             except EOFError:
                 pass
             return rc
-        print('[!] 未知命令: %s（可用: analyze / unpack / regression / gui）' % cmd)
+        print('[!] 未知命令: %s（可用: analyze / unpack / regression / gui；无参数=开界面）' % cmd)
         return 2
 
 

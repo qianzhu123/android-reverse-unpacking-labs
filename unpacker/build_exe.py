@@ -4,8 +4,11 @@
 build_exe.py — 把 unpacker 打成单文件 exe（PyInstaller）。
 
 用法（在仓库根执行）：
-  python unpacker/build_exe.py            # 打包 -> dist/unpacker.exe
-  python unpacker/build_exe.py --clean    # 打包前清掉 build/ dist/ 缓存
+  python unpacker/build_exe.py            # 打包 -> unpacker/dist/unpacker.exe
+  python unpacker/build_exe.py --clean    # 打包前清掉 unpacker/build/ dist/ 缓存
+
+所有构建产物都收在 unpacker/ 内部（build/ dist/ labs_bundle 临时副本），
+不在仓库根目录留任何东西。
 
 打包内容：
   · unpacker/*.py（analyzer / unpack / regression / labs / main）
@@ -25,8 +28,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
-DIST = os.path.join(REPO_ROOT, 'dist')
-BUILD = os.path.join(REPO_ROOT, 'build')
+DIST = os.path.join(HERE, 'dist')
+BUILD = os.path.join(HERE, 'build')
 
 
 def prepare_bundle():
@@ -67,14 +70,18 @@ def main():
         sys.executable, '-m', 'PyInstaller',
         '--noconfirm',
         '--onefile',
+        # GUI 是主入口（双击 exe 直接开界面），但保留控制台：CLI 子命令还要用，
+        # 且 GUI 内部跑 CLI 逻辑时异常栈也看得见。
         '--console',
         '--name', 'unpacker',
         '--paths', HERE,
         '--add-data', '%s;labs_bundle' % bundle,
+        # tkinterdnd2 的原生 tkdnd 库是二进制依赖，PyInstaller 靠 --collect-all 收进来
+        '--collect-all', 'tkinterdnd2',
         os.path.join(HERE, 'main.py'),
     ]
     print('[*] PyInstaller: %s' % ' '.join(cmd[2:]))
-    r = subprocess.run(cmd, cwd=REPO_ROOT)
+    r = subprocess.run(cmd, cwd=HERE)
     if r.returncode != 0:
         print('[!] 打包失败。')
         return 1
@@ -82,9 +89,8 @@ def main():
     if not os.path.exists(exe):
         print('[!] 未找到产物 %s' % exe)
         return 1
-    print('[+] 打包成功: %s (%d bytes)' % (os.path.relpath(exe, REPO_ROOT),
-                                           os.path.getsize(exe)))
-    print('    验证: dist/unpacker.exe analyze 360jiagu/libtarget_360_variant.so')
+    print('[+] 打包成功: unpacker/dist/unpacker.exe (%d bytes)' % os.path.getsize(exe))
+    print('    验证: unpacker/dist/unpacker.exe analyze 360jiagu/libtarget_360_variant.so')
     return 0
 
 

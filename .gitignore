@@ -14,6 +14,8 @@ __pycache__/
 # PyInstaller exe build artifacts (build via unpacker/build_exe.py, not committed)
 /dist/
 /build/
+unpacker/dist/
+unpacker/build/
 *.spec
 
 # Build outputs: keep build/*.sh, build/*.py, build/env.sh as lab tooling;

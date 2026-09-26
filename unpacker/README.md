@@ -16,19 +16,26 @@ python unpacker/main.py regression
 python unpacker/analyzer.py ...   python unpacker/unpack.py ...   python unpacker/regression.py
 ```
 
-**② 单文件 exe**（分发 / 拖拽使用）：
+**② 单文件 exe（GUI + CLI 双形态）**：
 
 ```bash
-python unpacker/build_exe.py        # PyInstaller 打包 -> dist/unpacker.exe（约 7 MB）
-dist/unpacker.exe analyze  <文件>    # 或直接把文件拖到 exe 图标上（无子命令=判定）
-dist/unpacker.exe unpack   <文件> [--pristine 黄金] [-o 输出目录]
-dist/unpacker.exe regression
+python unpacker/build_exe.py        # PyInstaller 打包 -> unpacker/dist/unpacker.exe（约 10 MB）
 ```
+
+- **双击 exe（或无参数启动）→ 直接打开图形界面**：
+  - 顶部拖放区（全窗口接受拖放）：把 APK / dex / so 拖进去
+  - 按钮：**① 判定（只读体检）**、**② 解固（判定→路由→验证）**、
+    **选黄金样本…**（可选，选了解固用 byte-exact 验证，不选明确提示 anchor-only）、
+    **③ 回归矩阵**
+  - 输出区实时显示 `[!]/[*]/[+]`（失败红 / 步骤灰 / 成功绿），与 CLI 输出一致
+  - 长任务后台线程跑，界面不冻结
+- **CLI 子命令不变**：`unpacker.exe analyze|unpack|regression ...`（把文件拖到 exe 图标上则直接判定并回车退出）
 
 exe 的仓库定位（解固路由依赖三个 lab 的模块）：**exe 所在目录向上找** >
 `ANDROID_REVERSE_LABS` 环境变量 > `--repo <仓库根>` > exe 内置兜底副本（打包时把三个
 lab 的 `tools/*.py` 收进 exe；找不到仓库时判定/解固照常可用，但不保证与 lab 最新代码同步）。
 exe 单独分发时产物写在**被解固文件旁边**的 `unpacker_output/`，不写系统临时目录。
+**exe 归属 unpacker/ 内部**：构建产物在 `unpacker/dist/unpacker.exe`，仓库根目录零残留。
 
 ## 定位（诚实声明）
 
@@ -78,11 +85,12 @@ PATH 没有才回退各 lab 自带的 `upx.exe`（4.2.4，lab 实测基线）。
 | 文件 | 作用 |
 |---|---|
 | `labs.py` | 只读桥接层：按文件路径加载各 lab 模块（无包式 import，互不污染） |
-| `main.py` | exe 入口：`analyze` / `unpack` / `regression` / 拖拽兜底；仓库定位与 UTF-8 控制台 |
+| `main.py` | exe 入口：无参数=开 GUI；CLI 子命令 `analyze` / `unpack` / `regression`；仓库定位与 UTF-8 控制台 |
+| `gui.py` | 图形界面：tkinter + tkinterdnd2 真拖放；判定/解固/回归三按钮 + 实时输出区 |
 | `analyzer.py` | 统一判定入口；SO 管线跑 360+UPX 双检测器互为交叉验证，APK/dex 走 ajiami |
 | `unpack.py` | 解固入口：判定 → 路由 → 两级验证（`--pristine` 给黄金样本则 byte-exact） |
 | `regression.py` | 全仓库混淆矩阵：19 样本 × 双向断言 + SO 检测器交叉验证；exit 0 = 全绿 |
-| `build_exe.py` | PyInstaller 打包脚本：单 exe + 三个 lab tools/ 内置兜底副本 |
+| `build_exe.py` | PyInstaller 打包脚本：单 exe + GUI + 三个 lab tools/ 内置兜底副本，产物收在 `unpacker/dist/` |
 
 产物目录：`unpacker_output/`（在被解固文件旁边，不污染样本目录）。
 输出约定：`[!]=失败/告警`、`[*]=步骤`、`[+]=成功`；每个结论都附认知边界提示。
