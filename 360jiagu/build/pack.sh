@@ -2,11 +2,11 @@
 # pack.sh — 生成"标准 360 加固样本"与"变种 360 加固样本"
 # 用法：在项目根目录执行  bash build/pack.sh
 #
-# 模型说明（详见 README）：360 加固的 native 层 = 改版 UPX（历史基础）。
+# 模型说明（详见 SCRIPT.md「踩坑」）：360 加固的 native 层 = 改版 UPX（历史基础）。
 #   - 标准 360：UPX 打包、UPX! 魔数保留 -> upx -d 可解（"可恢复配置"）
 #   - 变种 360：UPX! 被 360 改写成 4 字节 token -> upx -d 失败（需手工/动态脱壳）
 #
-# UPX 不写死：默认用工程根自带的 upx.exe（与 README 实测版本一致，保证可复现）；
+# UPX 不写死：默认用工程根自带的 upx.exe（与 SCRIPT.md 实测版本一致，保证可复现）；
 # 要换版本就 `UPX=<路径> bash build/pack.sh`，或先把 upx 加进 PATH（见 build/locate.sh）。
 set -e
 source "$(dirname "${BASH_SOURCE[0]}")/locate.sh"
@@ -16,7 +16,7 @@ cd "$ROOT"
 rm -f libtarget_360.so libtarget_360_variant.so libtarget_stripped.so _tmp_orig.so
 
 # 1) 复制原始 .so 并临时把 e_type 改成 ET_EXEC(2)：官方 UPX 4.2.4 才会打包
-#    （Android .so 是 ET_DYN，UPX 4.2.4 拒绝打包 ET_DYN，见 README §7）
+#    （Android .so 是 ET_DYN，UPX 4.2.4 拒绝打包 ET_DYN，见 SCRIPT.md「踩坑」）
 cp libtarget_orig.so _tmp_orig.so
 printf '\x02\x00' | dd of=_tmp_orig.so bs=1 seek=16 conv=notrunc 2>/dev/null
 "$UPX" --force-overwrite -o libtarget_360.so _tmp_orig.so

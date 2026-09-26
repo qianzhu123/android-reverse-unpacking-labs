@@ -3,7 +3,7 @@
 #
 # 目的：
 #   1) 给样本提供可观的可压缩体积，让 UPX（360 native 壳的历史基础）有"净收益"可打包
-#      （UPX 自带 ~3.5KB stub，原始 .so 太小会触发 NotCompressibleException，见 README §7）。
+#      （UPX 自带 ~3.5KB stub，原始 .so 太小会触发 NotCompressibleException，见 SCRIPT.md「踩坑」）。
 #   2) 这部分数据是脱壳后可逐字节对照的"真实数据锚点"，不是随机填充。
 #
 # 用法：由 build_android.sh 自动调用；也可单独运行  python build/gen_policy.py

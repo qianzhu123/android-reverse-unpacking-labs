@@ -8,12 +8,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/locate.sh"
 locate_require NDK PY
 cd "$ROOT"
 
-# 先生成策略表（提供可压缩体积，让 UPX 能打包；见 README §7）
+# 先生成策略表（提供可压缩体积，让 UPX 能打包；见 SCRIPT.md「踩坑」）
 "$PY" build/gen_policy.py
 
 # ARM32（主练习目标：UPX/360 native 壳打包用的就是它）
 # 用 --hash-style=sysv --pack-dyn-relocs=none 减少 NDK r27 的 RELR/GNU-hash，
-# 让 360 的 UPX 历史基础壳更易识别（官方 UPX 4.2.4 仍只打包 ET_EXEC，见 README）。
+# 让 360 的 UPX 历史基础壳更易识别（官方 UPX 4.2.4 仍只打包 ET_EXEC，见 SCRIPT.md「踩坑」）。
 "$CLANG" --target=armv7a-linux-androideabi21 -shared -fPIC -O2 \
   -Wl,--hash-style=sysv -Wl,--pack-dyn-relocs=none \
   -o libtarget_orig.so src/target.c
