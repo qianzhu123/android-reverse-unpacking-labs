@@ -58,11 +58,13 @@ class Gui:
         self.repo = repo_root
         self.q = queue.Queue()
         self.worker = None
+        self._pristine = None
+        self._outdir = None
 
         tk_cls = TkinterDnD.Tk if _HAS_DND else tk.Tk
         self.root = tk_cls()
         self.root.title('unpacker · Android 解固工具（判定 / 解固 / 回归）')
-        self.root.geometry('880x620')
+        self.root.geometry('920x660')
 
         self._build()
         if _HAS_DND:
@@ -104,12 +106,18 @@ class Gui:
 
         out_row = ttk.Frame(self.root)
         out_row.pack(fill='x', **pad)
-        ttk.Button(out_row, text='选产物位置（可选）', command=self._pick_outdir).pack(side='left', padx=4)
-        self.outdir_var = tk.StringVar(value='产物默认与拖入文件同目录（<样本名>_unpacked.*）')
-        ttk.Label(out_row, textvariable=self.outdir_var, foreground='#6c757d').pack(side='left', padx=2)
+        ttk.Button(out_row, text='选产物位置', command=self._pick_outdir).pack(side='left', padx=4)
+        ttk.Button(out_row, text='清除', command=self._clear_outdir).pack(side='left', padx=2)
+        self.outdir_var = tk.StringVar(value='产物位置：与拖入文件同目录（<样本名>_unpacked.so/.dex）')
+        ttk.Label(out_row, textvariable=self.outdir_var, foreground='#6c757d').pack(
+            side='left', padx=6, fill='x', expand=True)
 
         body = ttk.Frame(self.root)
         body.pack(fill='both', expand=True, **pad)
+        head = ttk.Frame(body)
+        head.pack(fill='x')
+        ttk.Label(head, text='输出：').pack(side='left')
+        ttk.Button(head, text='清空输出', command=self._clear_output).pack(side='left', padx=4)
         self.out = tk.Text(body, wrap='char', font=('Consolas', 9), state='disabled')
         self.out.pack(fill='both', expand=True)
         sb = ttk.Scrollbar(body, command=self.out.yview)
@@ -135,6 +143,12 @@ class Gui:
                 break
         self.out.insert('end', line + '\n', tag or ())
         self.out.see('end')
+        self.out.configure(state='disabled')
+
+    def _clear_output(self):
+        """清空输出区（不打断正在跑的任务——新输出会继续流进来）。"""
+        self.out.configure(state='normal')
+        self.out.delete('1.0', 'end')
         self.out.configure(state='disabled')
 
     def _drain_queue(self):
@@ -183,15 +197,17 @@ class Gui:
             self._pristine = None
 
     def _pick_outdir(self):
-        p = filedialog.askdirectory(title='选择产物目录（不选=默认与拖入文件同目录）')
+        p = filedialog.askdirectory(title='选择产物目录（取消=保持当前设置）')
         if p:
             self._outdir = os.path.abspath(p)
-            self.outdir_var.set('产物目录: %s' % self._outdir)
-            self._say('[*] 产物目录已指定: %s' % self._outdir)
-        else:
-            self._outdir = None
-            self.outdir_var.set('产物默认与拖入文件同目录（<样本名>_unpacked.*）')
-            self._say('[*] 产物目录恢复默认：与拖入文件同目录')
+            self.outdir_var.set('产物位置：%s' % self._outdir)
+            self._say('[*] 产物位置已指定: %s' % self._outdir)
+        # 取消对话框时保持当前设置不变（不误清）
+
+    def _clear_outdir(self):
+        self._outdir = None
+        self.outdir_var.set('产物位置：与拖入文件同目录（<样本名>_unpacked.so/.dex）')
+        self._say('[*] 产物位置已恢复默认：与拖入文件同目录')
 
     # -------------------------------------------------------- 任务执行
     def _run_task(self, name, fn):
@@ -261,15 +277,27 @@ class Gui:
         self._run_task('解固', fn)
 
     def _do_regression(self):
+        self._say('=' * 60)
+        self._say('[*] 回归矩阵 = 用本仓库三个练习工程的【全部样本】（19 个 APK/SO + 4 组检测器交叉）'
+                  '批量验证判定器：')
+        self._say('    · 正向：已知壳样本必须被正确分类（防"改判定器把真壳漏掉"）')
+        self._say('    · 负向：干净样本必须判"未见已知特征"（防把正常 App 误报成壳）')
+        self._say('    · 交叉：360 与 UPX 两个检测器对同一文件结论方向必须一致')
+        self._say('    这是仓库 PROMPT.md 负样本纪律的全仓库级回归——不依赖拖入文件，'
+                  '随时可跑；改过 lab 检测器代码后必须跑它兜底。')
+
         def fn():
             import regression
             regression.main_with_repo([], self.repo)
-        self._say('=' * 60)
         self._run_task('回归矩阵', fn)
 
     def run(self):
         self._say('[*] unpacker GUI 就绪。仓库根: %s' % self.repo)
         self._say('[*] 用法：拖入文件 → ① 判定 →（可选：黄金样本 / 产物位置）→ ② 解固；产物默认在拖入文件同目录。')
+        self._say('[*] 测试本仓库的加固样本：把 360jiagu/、upx_practice/ 下的 libtarget_*.so 或 '
+                  'ajiami/samples/apks/ 下的 app_packed_*.apk 拖进来即可——'
+                  '它们正是 ③ 回归矩阵 所覆盖的那批样本。')
+        self._say('[*] 提示：输出太多可随时点「清空输出」；不影响正在运行的任务。')
         self.root.mainloop()
 
 

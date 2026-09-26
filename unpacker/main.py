@@ -74,8 +74,28 @@ def _setup(cli_repo=None):
                   'ANDROID_REVERSE_LABS=<仓库根>；或用 --repo <仓库根> 参数。')
 
 
+def _popup_error(msg):
+    """无控制台 exe 里报错给人看：tk 消息框（tk 可用时），否则退化为 print。"""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        r = tk.Tk(); r.withdraw()
+        messagebox.showerror('unpacker', msg)
+        r.destroy()
+    except Exception:
+        print('[!] ' + msg)
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+
+    # GUI 版 exe 是 --noconsole 打包的：检测器代码往 sys.stdout 打印会因 stdout 为 None
+    # 而炸（subprocess 亦同）。这里全部替换成可丢弃的安全流；GUI 场景里真正的输出
+    # 由 gui.py 在 worker 线程里用队列接管，CLI 场景此替换是 no-op（stdout 本就有效）。
+    if getattr(sys, 'frozen', False) and (sys.stdout is None or sys.stderr is None):
+        _devnull = open(os.devnull, 'w', encoding='utf-8')
+        sys.stdout = sys.stdout or _devnull
+        sys.stderr = sys.stderr or _devnull
 
     # 剥全局参数 --repo <path>
     repo_arg = None
@@ -92,8 +112,8 @@ def main(argv=None):
         # 无参数：exe 双击 → 直接开 GUI（这正是"打开一个界面"的主入口）
         repo, err = _setup(repo_arg)
         if err:
-            print('[!] ' + err)
-            input('回车退出...')
+            # 无控制台模式下 print 无人看见——弹一个 tk 消息框兜底
+            _popup_error(err)
             return 2
         import gui
         gui.launch(repo)
@@ -102,10 +122,17 @@ def main(argv=None):
     cmd = argv[0]
     rest = argv[1:]
 
+    def _fail_cli(msg):
+        """CLI 子命令失败：有控制台就 print，无控制台（误用 GUI exe 跑 CLI）弹窗。"""
+        if getattr(sys, 'frozen', False) and sys.stdout is None:
+            _popup_error(msg)
+        else:
+            print('[!] ' + msg)
+
     if cmd in ('gui', '--gui'):
         repo, err = _setup(repo_arg)
         if err:
-            print('[!] ' + err)
+            _popup_error(err)
             return 2
         import gui
         gui.launch(repo)
@@ -113,21 +140,21 @@ def main(argv=None):
     if cmd == 'analyze':
         repo, err = _setup(repo_arg)
         if err:
-            print('[!] ' + err)
+            _fail_cli(err)
             return 2
         import analyzer
         return analyzer.main_with_repo(rest, repo)
     elif cmd == 'unpack':
         repo, err = _setup(repo_arg)
         if err:
-            print('[!] ' + err)
+            _fail_cli(err)
             return 2
         import unpack
         return unpack.main_with_repo(rest, repo)
     elif cmd == 'regression':
         repo, err = _setup(repo_arg)
         if err:
-            print('[!] ' + err)
+            _fail_cli(err)
             return 2
         import regression
         return regression.main_with_repo(rest, repo)
@@ -135,7 +162,7 @@ def main(argv=None):
         # 未知子命令：当作文件路径直接判定（把文件拖到 exe 图标上的场景）
         repo, err = _setup(repo_arg)
         if err:
-            print('[!] ' + err)
+            _fail_cli(err)
             return 2
         if os.path.exists(cmd) or cmd.lower().endswith(('.apk', '.so', '.dex', '.xapk')):
             import analyzer
@@ -146,7 +173,7 @@ def main(argv=None):
             except EOFError:
                 pass
             return rc
-        print('[!] 未知命令: %s（可用: analyze / unpack / regression / gui；无参数=开界面）' % cmd)
+        _fail_cli('未知命令: %s（可用: analyze / unpack / regression / gui；无参数=开界面）' % cmd)
         return 2
 
 

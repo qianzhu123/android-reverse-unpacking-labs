@@ -16,21 +16,22 @@ python unpacker/main.py regression
 python unpacker/analyzer.py ...   python unpacker/unpack.py ...   python unpacker/regression.py
 ```
 
-**② 单文件 exe（GUI + CLI 双形态）**：
+**② 单文件 exe（GUI + CLI 双形态，一次构建出两个）**：
 
 ```bash
-python unpacker/build_exe.py        # PyInstaller 打包 -> unpacker/dist/unpacker.exe（约 10 MB）
+python unpacker/build_exe.py        # PyInstaller -> unpacker/dist/ 下两个 exe
 ```
 
-- **双击 exe（或无参数启动）→ 直接打开图形界面**：
+- **`unpacker.exe`（GUI 版，无黑色控制台窗口）**——分发主形态，双击/无参数启动直接开图形界面：
   - 顶部拖放区（全窗口接受拖放）：把 APK / dex / so 拖进去
   - 按钮：**① 判定（只读体检）**、**② 解固（判定→路由→验证）**、
-    **选黄金样本…**（可选，选了解固用 byte-exact 验证，不选明确提示 anchor-only）、
-    **选产物位置…**（可选，不选=默认与拖入文件同目录）、**③ 回归矩阵**
+    **选黄金样本（可选）**、**选产物位置**（选中/清除都即时反映在旁边标签上）、
+    **③ 回归矩阵**、**清空输出**
   - **产物默认与拖入文件同路径**：`D:\samples\xxx.so` → `D:\samples\xxx_unpacked.so`
     （APK 出 `_unpacked.dex`）；产物已存在时自动加 `_1/_2` 编号，**不静默覆盖**
-  - 输出区实时显示 `[!]/[*]/[+]`（失败红 / 步骤灰 / 成功绿），与 CLI 输出一致
-  - 长任务后台线程跑，界面不冻结
+  - 输出区实时显示 `[!]/[*]/[+]`（失败红 / 步骤灰 / 成功绿），与 CLI 输出一致；「清空输出」只清历史文本，不打断正在运行的任务
+  - 长任务后台线程跑，界面不冻结；无控制台场景下 CLI 型错误改走弹窗
+- **`unpacker-cli.exe`（CLI 版，带控制台）**：`analyze|unpack|regression ...` 子命令用这个（把文件拖到 exe 图标上则直接判定并回车退出）
 - **CLI 子命令不变**：`unpacker.exe analyze|unpack|regression ...`（把文件拖到 exe 图标上则直接判定并回车退出）
 
 exe 的仓库定位（解固路由依赖三个 lab 的模块）：**exe 所在目录向上找** >
@@ -87,8 +88,8 @@ PATH 没有才回退各 lab 自带的 `upx.exe`（4.2.4，lab 实测基线）。
 | 文件 | 作用 |
 |---|---|
 | `labs.py` | 只读桥接层：按文件路径加载各 lab 模块（无包式 import，互不污染） |
-| `main.py` | exe 入口：无参数=开 GUI；CLI 子命令 `analyze` / `unpack` / `regression`；仓库定位与 UTF-8 控制台 |
-| `gui.py` | 图形界面：tkinter + tkinterdnd2 真拖放；判定/解固/回归三按钮 + 实时输出区 |
+| `main.py` | exe 入口：无参数=开 GUI；CLI 子命令 `analyze` / `unpack` / `regression`；仓库定位、UTF-8、无控制台兜底 |
+| `gui.py` | 图形界面：tkinter + tkinterdnd2 真拖放；判定/解固/回归/清空按钮 + 实时输出区 |
 | `analyzer.py` | 统一判定入口；SO 管线跑 360+UPX 双检测器互为交叉验证，APK/dex 走 ajiami |
 | `unpack.py` | 解固入口：判定 → 路由 → 两级验证（`--pristine` 给黄金样本则 byte-exact） |
 | `regression.py` | 全仓库混淆矩阵：19 样本 × 双向断言 + SO 检测器交叉验证；exit 0 = 全绿 |
