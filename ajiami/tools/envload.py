@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 envload.py — 让 Python 工具**不需要先 source build/env.sh** 也能拿到工具链路径。

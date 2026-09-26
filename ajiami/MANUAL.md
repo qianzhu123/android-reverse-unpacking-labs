@@ -12,9 +12,10 @@
 ## 0. 概述与三分钟跑一遍
 
 **项目定位**：同 `SCRIPT.md` ——用自造「类爱加密」样本，把 DEX 加固三代演化的判定与脱壳全链路搬到本地。
+**建模说明与循环论证风险**：同 `SCRIPT.md` §0.2 ——商业加固无法离线复现，故从同一份源码自造壳与业务样本；自造样本必然对自造检测器「全对」，故强制配对抗式负样本 + 双向回归断言（§3.8）。
 **三条硬约束**（与脚本版一致）：先确定性规则再谈 LLM；基于 evidence（结构特征）；配置外置。
 
-### 0.1 三分钟跑一遍（手脱版 · 一代最小闭环）
+### 0.3 三分钟跑一遍（手脱版 · 一代最小闭环）
 
 ```bash
 cd ajiami
@@ -36,7 +37,7 @@ python -c "import math;from collections import Counter;b=open('samples/payloads/
 
 三步下来已能定性「一代整体加密」：`classes.dex` 异常小 + `assets/` 高熵 payload + `Application` 被代理。下面 §3 / §4 把每一代、每一步的手工做法铺开。
 
-### 0.2 文件与样本索引
+### 0.4 文件与样本索引
 
 `tools/`（本文档**不使用**，仅列作对照；手脱只用系统通用工具）：
 
@@ -49,7 +50,7 @@ python -c "import math;from collections import Counter;b=open('samples/payloads/
 | `walkthrough.py` | 手动读 dex 头偏移（§6） |
 | `reset_lab.py` | `cp pristine/* samples/`（§7） |
 
-`samples/` 清单与 `SCRIPT.md` §0.2 完全相同（一代 `v1` / 二代 `v2` / 三代 `v3` / 变种 `v2_variant` / VMP `app_vmp` / SO `app_so_packed` / 负样本）。
+`samples/` 清单与 `SCRIPT.md` §0.4 完全相同（一代 `v1` / 二代 `v2` / 三代 `v3` / 变种 `v2_variant` / VMP `app_vmp` / SO `app_so_packed` / 负样本）。
 
 ---
 
@@ -74,40 +75,40 @@ ajiami/
 ### 2.0 完整保护体系总览
 Ajiami 是多层叠加：`DEX 保护`（整体加密/代码分离/函数抽取/动态还原/DEX VMP）、`Native 保护`（SO 加壳/SO Linker/SO 防调用/SO VMP）、`Java→Native Java2CPP`、`对抗`（防调试/防注入/防 Hook/完整性校验/签名保护）。本工程样本覆盖 DEX 保护主线；其余在 §2.5 起补齐知识框架。**两条原则**：① DEX 与 Native 常形成链，须同时进 ELF/SO；② 不只盯 `classes.dex`，要查 `assets/` `lib/` `res/` 与非标准文件。
 
-### 2.1 一代 · DEX 整体加密
+### 2.1 一代 · DEX 整体加密 **[可验证]**
 业务 `classes.dex` 整体加密塞进 `assets/`；`classes.dex` 退化成极小壳，`Application` 指向 `ProxyApplication`，运行期 `DexClassLoader` 加载真 dex。**结构特征**：壳 dex 无业务类；`assets/` 高熵文件（本工程 `ijm_payload.bin` 熵 **7.869**）；payload 容器 `[int32_le 长度][magic 'AJM\x01'][XOR 密文]`；Manifest 声明业务类在所有 dex 并集里不存在。**判定 → §3.1；脱壳 → §4.1。**
 
-### 2.2 二代 · 类抽取
+### 2.2 二代 · 类抽取 **[可验证]**
 保留类名/方法名，把每个 `code_item.insns` 抽空成 `0x00`（nop，dex 仍合法），真指令加密存进 `assets/` 侧表（magic `AJMT`），运行期按 `code_off` 回填。**结构特征**：空方法率（本工程 **22/44 = 50%**）；侧表条目 `u4 class_idx|u4 method_idx|u4 code_off|u4 insns_len|密文`。**判定 → §3.2；脱壳 → §4.2。**
 
-### 2.3 三代 · 选择性抽取 + 混淆 + 诱饵
+### 2.3 三代 · 选择性抽取 + 混淆 + 诱饵 **[可验证]**
 只抽敏感类（`SecretLogic`+`TokenUtil`）→ 整体空率压到 **18.18%（8/44）**；资源名混淆（侧表改名 `brand_res_v3.dat`）；诱饵 `config.txt` 骗「按熵找 payload」。**结构特征**：整体空率低，但存在**局部 100% 空方法类**（SecretLogic 4/4、TokenUtil 4/4）→ 需**下钻单类**（B3\*）。**判定 → §3.3；脱壳 → §4.2。**
 
-### 2.4 变种样本 · 字符串混淆
+### 2.4 变种样本 · 字符串混淆 **[可验证]**
 `make_variant.py` 把家族串做**等长字母表倒序映射**（`ijiami`→`rqrznr`）：朴素字符串判定**完全失效**，结构**一个字节没变**照常命中 → 「禁止只靠字符串下结论」的活证。**判定 → §3.4。**
 
-### 2.5 DEX VMP（虚拟化）
+### 2.5 DEX VMP（虚拟化） **[可验证]**
 原始指令 → 自定义字节码 → 自家虚拟机解释执行；无永久固定 opcode 映射。**静态特征**：类名/方法名/字段还在，但真实 dalvik 指令已不是原形式（`invoke-static` 到解释器）。→ 空方法率**不升高，B3 直接失效**（关键区别）。识别靠：方法体「调用解释器」异常形态 + `assets/` 非 dalvik 自定义字节码 + 解释器类/SO。本工程 `app_vmp.apk` 是「不明方案被放过」教学样本（§3.5），属认知边界。
 
-### 2.6 独立数据载荷 + 多 SO 执行链
+### 2.6 独立数据载荷 + 多 SO 执行链 **[知识框架]**
 真实样本常见 `assets/ijiami.ajm` `lib/libexec.so` 等「缩壳 DEX + 独立载荷 + Native 链」。分析要查 `assets/`（大高熵文件）、`lib/*/`（加固 SO）、`res/`、其它非标准文件。本工程 DEX 样本不含这类独立 SO 载荷，但 §3.6 的 **B13** 已能覆盖 SO 侧。
 
-### 2.7 Native 保护：SO 加壳 / SO Linker / SO 防调用 / SO VMP
+### 2.7 Native 保护：SO 加壳 / SO Linker / SO 防调用 / SO VMP **[可验证]**
 **SO Linker**：非标准 Native 加载/链接（自己按 Program Header 装载，不写标准节头）。本工程已有 SO 样本 `app_so_packed.apk`（NDK 编译、节头表剥离模拟自实现 Linker），由 **B13** 自动识别；SO VMP / SO 防调用仍属知识框架（待扩展）。**判定 → §3.6。**
 
-### 2.8 Java2CPP（Java → Native）
+### 2.8 Java2CPP（Java → Native） **[知识框架]**
 Java → C++ → SO，DEX Java 代码减少、逻辑转 Native。**识别**：DEX 干净 + SO 庞大 + 业务减少 → 考虑 Java2CPP；判据 B12（native 占比 ≥ 30%）。本工程无样本，属知识框架。同样让 **B3 失效**。
 
-### 2.9 双重 VMP（DEX VMP + SO VMP）
+### 2.9 双重 VMP（DEX VMP + SO VMP） **[知识框架]**
 `Java/Dex → DEX VMP → Native → SO VMP`。两层虚拟化须**两层都看**。
 
-### 2.10 字符串加密
+### 2.10 字符串加密 **[知识框架]**
 JADX 里关键 URL/密钥/类名/错误信息可能搜不到。处理：从「静态搜索」转「使用点 → 运行期解密 → 明文」。与 §2.4 区别：§2.4 是等长替换（串还在只是变形），字符串**加密**静态不可读须找解密点。属认知边界（动态还原）。
 
-### 2.11 完整性 / 签名保护
+### 2.11 完整性 / 签名保护 **[知识框架]**
 DEX/SO/资源防篡改 + 签名保护。改 APK 重打包运行异常，可能不是代码错而是校验被触发。属认知边界。
 
-### 2.12 反调试 / 反注入 / 反 Hook
+### 2.12 反调试 / 反注入 / 反 Hook **[知识框架]**
 防 Java/C 层调试、防注入、防 Hook。现象：附加调试器/动态 Hook → 崩溃退出。**作为独立模块分析，勿混入 DEX 恢复逻辑**。
 
 ### 2.13 样本识别检查表
@@ -178,7 +179,7 @@ xxd -s 0xE10 -l 64 samples/dex/extracted_v3.dex        # 抽取后：SecretLogic
 xxd -s 0xE10 -l 64 samples/dex/classes_merged_orig.dex # 黄金：真实字节码
 ```
 
-**怎么判（对应 B3\*）**：三代整体空率压到 **18.18%（8/44）**，低于 50% 阈值——只看整体会**漏掉**。关键在**下钻单类**：`SecretLogic` 4/4、`TokenUtil` 4/4 是 **100% 空**的**局部空方法类**，其余类完好。这就是判据 **B3\***：**整体率低但存在 100% 空类 → 选择性抽取（三代）**。
+**怎么判（对应 B3\*）**：三代整体空率压到 **18.18%（8/44）**，低于 B3 的 **40%** 阈值——只看整体会**漏掉**。关键在**下钻单类**：`SecretLogic` 4/4、`TokenUtil` 4/4 是 **100% 空**的**局部空方法类**，其余类完好。这就是判据 **B3\***：**整体率低但存在 100% 空类 → 选择性抽取（三代）**。
 > 资源名混淆（`brand_res_v3.dat`）和诱饵（`config.txt`）只改 `assets/` 文件名和熵分布，不影响 DEX 空方法率，所以 B3\* 不受影响——正是「结构判据不靠文件名/字符串」的体现。
 **失效边界**：`B3*` 只在「被抽类仍有 `code_item` 但 `insns` 为 0」时有效；若连 `code_item` 被抹或改 VMP/Java2CPP，信号消失，须转动态 trace。
 

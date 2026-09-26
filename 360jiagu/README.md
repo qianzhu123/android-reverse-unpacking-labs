@@ -455,8 +455,10 @@ python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_f
 # 重新生成样本
 bash build/build_android.sh    # NDK 编译原始 .so（含 gen_policy.py 生成策略表）
 bash build/pack.sh             # 生成标准 + 变种
+python tools/make_stripped_so.py libtarget_orig.so libtarget_stripped.so   # 生成 B13 样本（剥节头，模拟自实现 Linker）
 
 # 回归
+python tools/check_so_samples.py    # B13 双向断言（正向/负向/防回归，0 失败才算过）
 python tools/reset_lab.py restore
 ```
 
@@ -490,8 +492,10 @@ python tools/reset_lab.py restore
 ├── tools/
 │   ├── detect_360.py          ★ 结构特征判定（加壳/标准360/变种360，--verify 实证）
 │   ├── reset_lab.py           ★ 备份 / 状态 / 回归
+│   ├── check_so_samples.py    ★ B13 双向回归断言（stripped 必触发 / orig 必不触发 / 既有 360 判定防回归）
 │   ├── solve_360.py           解法 A 自动化（特征修复 + upx -d + 锚点校验）
 │   ├── make_360_variant.py    由标准包生成变种（UPX! → JG!!）
+│   ├── make_stripped_so.py    生成 B13 样本（剥离节头表，模拟自实现 Linker）
 │   ├── dump_fix.py            解法 B：内存 dump → 重建 ELF
 │   ├── simulate_dump.py       生成模拟内存镜像
 │   ├── elf_scan.py            无依赖 ELF 解析 + UPX 指纹
@@ -503,7 +507,8 @@ python tools/reset_lab.py restore
 ├── libtarget_orig.so          【原始 SO】ET_DYN ARM32
 ├── libtarget_orig_arm64.so    ARM64 原始 .so（对照）
 ├── libtarget_360.so           【标准 360】upx -d 可解
-└── libtarget_360_variant.so   【变种 360】upx -d 失败
+├── libtarget_360_variant.so   【变种 360】upx -d 失败
+└── libtarget_stripped.so      【B13 样本】节头剥离（不触发 UPX 特征，只触发 B13）
 ```
 
 ---

@@ -486,7 +486,7 @@ def verdict(f):
                      % (high_entropy_assets[0]['name'], high_entropy_assets[0]['entropy']))
 
     # B2：(错误示范，保留在报告里做对照) 只看 dex 里类数量就下结论
-    #      —— 在本工程 app_orig.apk 上会误报，详见 README §5.2
+    #      —— 在本工程 app_orig.apk 上会误报，详见 SCRIPT.md §3.7
     naive2_hint = ('类数=%d（<=8 会被朴素规则误判为壳）' % class_defs) if class_defs else ''
 
     # B3：空方法率

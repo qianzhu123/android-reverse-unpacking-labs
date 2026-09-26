@@ -225,7 +225,6 @@ DEX 整体加密、类抽取、加固判定）。
 | 不适用的主题 | 代码混淆 / 字符串保护 / VMP 教学 → 不用本提示词，单独写 |
 | 样本 | NDK clang 从源码编译，加壳前后同源，可逐字节对照 |
 | 样本目录 | `samples/apks/`(APK) · `samples/dex/`(对照/壳/解出 dex) · `samples/payloads/`(payload/侧表/混淆资源) |
-| 样本目录 | `samples/apks/`(APK) · `samples/dex/`(对照/壳/解出 dex) · `samples/payloads/`(payload/侧表/混淆资源) |
 | 判定 | 结构特征 + 量化阈值；禁靠文件名/单一字符串 |
 | 知识点写法 | 五件套：是什么 / 怎么看 / 验证脚本 / 实测输出 / 失效边界 |
 | 回退 | `pristine/` 备份 + `tools/reset_lab.py`（status / restore / backup） |
