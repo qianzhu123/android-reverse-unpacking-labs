@@ -1,19 +1,19 @@
-
-#  (360jiagu, ajiami, upx_practice + shared PROMPT.md)
-#  Android Reverse-Engineering / Unpacking study repo
-#  ollvm is an INDEPENDENT git repo -> excluded at the bottom.
-# ---- Exclude the independent ollvm repo (own git history) ----
-# ---- Generated outputs (never commit) ----
-# ---- IDE / OS junk ----
-# ---- Third-party / local binaries ----
 # ============================================================
+#  Android Reverse-Engineering / Unpacking study repo
+#  (360jiagu, ajiami, upx_practice + shared PROMPT.md)
+#  ollvm is an INDEPENDENT git repo -> excluded at the bottom.
+# ============================================================
+
+# ---- Generated outputs (never commit) ----
+analysis_output/
+logs/
+__pycache__/
+*.pyc
+JSON
+
 # Build outputs: keep build/*.sh, build/*.py, build/env.sh as lab tooling;
-# Local environment overrides
-# PyInstaller exe build artifacts (build via unpacker/build_exe.py, not committed)
-# Signing keystore must never be committed
-# UPX packer binaries (upx.exe at project root, upx396.exe in tools/) are not committed.
-# any depth (each lab nests them under its own folder, e.g. ajiami/build/v1/).
 # ignore only the generated sub-directories. Use **/ so the pattern matches at
+# any depth (each lab nests them under its own folder, e.g. ajiami/build/v1/).
 **/build/_probe/
 **/build/merged/
 **/build/neg/
@@ -24,24 +24,28 @@
 **/build/v3/
 **/build/variant/
 **/build/vmp/
-*.exe
-*.iml
+
+# Signing keystore must never be committed
 *.keystore
-*.local
-*.pyc
-*.spec
-.DS_Store
-.idea/
-.vscode/
-/build/
-/dist/
-/ollvm/
-JSON
-Thumbs.db
-__pycache__/
-analysis_output/
-local.properties
-logs/
+
+# ---- Third-party / local binaries ----
+# UPX packer binaries (upx.exe at project root, upx396.exe in tools/) are not committed.
+*.exe
+
+# PyInstaller exe build artifacts (build via unpacker/build_exe.py, not committed)
 unpacker/build/
 unpacker/dist/
-unpacker_output/
+
+# Local environment overrides
+local.properties
+*.local
+
+# ---- IDE / OS junk ----
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- Exclude the independent ollvm repo (own git history) ----
+/ollvm/
