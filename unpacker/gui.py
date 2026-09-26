@@ -95,6 +95,16 @@ class Gui:
         self.root = tk_cls()
         self.root.title('unpacker · Android 解固工具（判定 / 解固 / 回归）')
         self.root.geometry('920x660')
+        # 窗口/任务栏图标：单文件 exe 运行时 .ico 在 sys._MEIPASS 里，源码场景在脚本旁
+        try:
+            cands = [os.path.join(getattr(sys, '_MEIPASS', HERE), 'app_icon.ico'),
+                     os.path.join(HERE, 'app_icon.ico')]
+            for ico in cands:
+                if os.path.exists(ico):
+                    self.root.iconbitmap(ico)
+                    break
+        except Exception:
+            pass  # 图标缺失/不支持时不影响功能
 
         self._build()
         if _HAS_DND:

@@ -35,6 +35,8 @@ JSON
 # PyInstaller exe build artifacts (build via unpacker/build_exe.py, not committed)
 unpacker/build/
 unpacker/dist/
+unpacker/*.spec
+unpacker/app_icon_preview.png
 
 # Local environment overrides
 local.properties

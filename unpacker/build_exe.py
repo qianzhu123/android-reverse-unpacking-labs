@@ -70,8 +70,15 @@ def build_one(name, console):
         '--name', name,
         '--paths', HERE,
         '--add-data', '%s;labs_bundle' % os.path.join(os.path.relpath(BUILD, HERE)),
+        # 图标也打进 exe，GUI 窗口/任务栏图标才能在单文件模式下找到
+        '--add-data', '%s;.' % os.path.join(HERE, 'app_icon.ico'),
         '--collect-all', 'tkinterdnd2',
     ]
+    icon = os.path.join(HERE, 'app_icon.ico')
+    if os.path.exists(icon):
+        cmd += ['--icon', icon]
+    else:
+        print('[!] 未找到 app_icon.ico（可先跑 python unpacker/make_icon.py 生成）；本次用默认图标。')
     if console:
         cmd.append('--console')
     else:

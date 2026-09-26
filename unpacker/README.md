@@ -20,6 +20,7 @@ python unpacker/analyzer.py ...   python unpacker/unpack.py ...   python unpacke
 
 ```bash
 python unpacker/build_exe.py        # PyInstaller -> unpacker/dist/unpacker.exe
+python unpacker/make_icon.py        # 可选：重新生成图标（改完图标设计后先跑它再打包）
 ```
 
 - **`unpacker.exe` 双击/无参数启动 → 直接开图形界面，全程无黑色控制台窗口**（`--noconsole` 打包；
@@ -96,7 +97,8 @@ PATH 没有才回退各 lab 自带的 `upx.exe`（4.2.4，lab 实测基线）。
 | `analyzer.py` | 统一判定入口；SO 管线跑 360+UPX 双检测器互为交叉验证，APK/dex 走 ajiami |
 | `unpack.py` | 解固入口：判定 → 路由 → 两级验证（`--pristine` 给黄金样本则 byte-exact） |
 | `regression.py` | 全仓库混淆矩阵：19 样本 × 双向断言 + SO 检测器交叉验证；exit 0 = 全绿 |
-| `build_exe.py` | PyInstaller 打包脚本：单 exe + GUI + 三个 lab tools/ 内置兜底副本，产物收在 `unpacker/dist/` |
+| `build_exe.py` | PyInstaller 打包脚本：单 exe + GUI + 图标 + 三个 lab tools/ 内置兜底副本，产物收在 `unpacker/dist/` |
+| `make_icon.py` | 生成应用图标 `app_icon.ico`（纯 Pillow 绘制，盾形+脱壳碎片；多尺寸 16–256） |
 
 产物默认与输入文件**同目录同名前缀**：`<样本名>_unpacked.so`（ELF）/ `<样本名>_unpacked.dex`（APK）；
 `-o <目录>` 或 GUI「选产物位置」可改到指定目录；产物已存在自动加 `_1/_2` 编号，不静默覆盖。
