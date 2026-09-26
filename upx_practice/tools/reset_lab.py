@@ -25,7 +25,7 @@ PROTECTED_DIRS = {"tools", "src", "docs", "build", "pristine",
 NON_SAMPLE_EXTS = {".md", ".txt", ".json", ".py", ".sh", ".bat", ".ps1",
                    ".exe", ".dll", ".yaml", ".yml", ".toml", ".ini", ".cfg"}
 # 默认识别为"练习产物"的 glob 模式
-# 注意 *unpacked.so 同时覆盖 "unpacked.so" 与 "xxx_unpacked.so"（如 README 示例的输出名）
+# 注意 *unpacked.so 同时覆盖 "unpacked.so" 与 "xxx_unpacked.so"（如 SCRIPT.md 示例的输出名）
 DEFAULT_ARTIFACT_GLOBS = ["*unpacked.so", "*_repaired.so",
                           "*_probe.so", "_tmp_*.so", "*.fixed.so"]
 DEFAULT_CLEAN_DIR = "analysis_output"

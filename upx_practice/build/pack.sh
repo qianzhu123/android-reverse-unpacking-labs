@@ -2,7 +2,7 @@
 # pack.sh — 生成"标准 UPX 样本"与"变种 UPX 样本"
 # 用法：在项目根目录执行  bash build/pack.sh
 #
-# UPX 不写死：默认用工程根自带的 upx.exe（与 README 实测版本一致，保证可复现）；
+# UPX 不写死：默认用工程根自带的 upx.exe（与 SCRIPT.md 实测版本一致，保证可复现）；
 # 要换版本就 `UPX=<路径> bash build/pack.sh`，或先把 upx 加进 PATH（见 build/locate.sh）。
 set -e
 source "$(dirname "${BASH_SOURCE[0]}")/locate.sh"

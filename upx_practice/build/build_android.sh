@@ -10,7 +10,7 @@ cd "$ROOT"
 
 # ARM32（主练习目标：UPX 打包用的就是它）
 # 注意用 --hash-style=sysv --pack-dyn-relocs=none，减少 NDK r27 的 RELR/GNU-hash，
-# 让老版本 UPX 也更容易识别（本环境里官方 UPX 4.2.4 仍只打包 ET_EXEC，见 README）。
+# 让老版本 UPX 也更容易识别（本环境里官方 UPX 4.2.4 仍只打包 ET_EXEC，见 SCRIPT.md「踩坑」）。
 "$CLANG" --target=armv7a-linux-androideabi21 -shared -fPIC -O2 \
   -Wl,--hash-style=sysv -Wl,--pack-dyn-relocs=none \
   -o libtarget_orig.so src/target.c
