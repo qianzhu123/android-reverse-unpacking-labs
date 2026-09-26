@@ -1,18 +1,20 @@
-# MANUAL.md — 手脱方法：用通用工具（unzip / aapt2 / xxd / 熵工具）复现每一步
+# MANUAL.md — 手脱方法：用通用工具与 GUI 工具复现每一步
 
 > 本文件与 `SCRIPT.md` **结构完全平行**（同一套章节骨架一一对应），只讲「通用工具怎么做」。
-> 只用 **unzip / aapt2 / xxd / 熵工具 / readelf 或等价 xxd / sha256sum / cmp / grep** 这类任意平台都有的工具，
+> 命令行工具用 **unzip / aapt2 / xxd / apkutil(熵) / readelf / sha256sum / cmp / grep**；
+> 图形化工具用 **binwalk(熵曲线) / jadx(反编译)**，穿插在对应步骤里演示——
 > 目的是**亲手走一遍脚本做的每一步**，而不是只会跑脚本。配套的一键脚本见 `SCRIPT.md`。
 >
 > PowerShell 下 `xxd` 可用 `Format-Hex -Path <文件> -Offset <偏移> -Count <长度>` 替代；`aapt2`/`binwalk` 这类 Windows 程序传参要用盘符风格路径（`X:/...`），`unzip`/`xxd`/`sha256sum` 这类 Git Bash 工具可用 `/d/...`。
 > 所有命令单行书写，每行用 `# =>` 注释判读。
+> **学习路线说明**：判定靠命令（可量化、可写进判据），看懂靠 GUI（jadx 出 Java、binwalk 出曲线）。先用命令拿到"是什么代次"的硬结论，再用 GUI 打开看懂"它长什么样"。二者是手脱的两条腿，不是二选一。
 
 ---
 
 ## 概述与三分钟跑一遍
 
 **项目定位**：同 `SCRIPT.md` ——用自造「类爱加密」样本，把 DEX 加固三代演化的判定与脱壳全链路搬到本地。
-**建模说明与循环论证风险**：同 `SCRIPT.md` 「为什么自造样本」 ——商业加固无法离线复现，故从同一份源码自造壳与业务样本；自造样本必然对自造检测器「全对」，故强制配对抗式负样本 + 双向回归断言（「一键批量 + 负样本回归」）。
+**建模说明与循环论证风险**：同 `SCRIPT.md`「为什么自造样本」——商业加固无法离线复现，故从同一份源码自造壳与业务样本；自造样本必然对自造检测器「全对」，故强制配对抗式负样本 + 双向回归断言（见「一键批量 + 负样本回归」节）。
 **三条硬约束**（与脚本版一致）：先确定性规则再谈 LLM；基于 evidence（结构特征）；配置外置。
 
 ### 三分钟跑一遍（手脱版 · 三代全覆盖最小闭环）
@@ -33,34 +35,34 @@ grep -i "android:name" /tmp/manifest.txt | head
 # ③ 一代：算熵确认 payload 是加密/压缩（> 7.5 基本可认定）；熵值用本仓工具 apkutil.py entropy
 python tools/apkutil.py entropy samples/payloads/payload_v1.bin
 #   => 7.8690 bit/byte (4532 bytes)   ← 接近满熵，典型加密 payload
-#   （手算版一行命令见 「判定 · 一代」，结果应与工具一致——两者互为校验）
+#   （手算版一行命令见「判定 · 一代」节，结果应与工具一致——两者互为校验）
 
 # ④ 二代：拆包对比——classes.dex 不再极小（业务类都在），但多出侧表
 unzip -l samples/apks/app_packed_v2.apk
 #   => classes.dex 10284 字节（类都在！）+ assets/ijm_codes.bin 1174 字节（多出来的侧表）
-#   二代关键信号从「dex 小」变成「dex 里方法体被抽空」→ 用 「判定 · 二代」 的 xxd 看 insns 是否全 0
+#   二代关键信号从「dex 小」变成「dex 里方法体被抽空」→ 用「判定 · 二代」节的 xxd 看 insns 是否全 0
 
 # ⑤ 三代：侧表改名 + 诱饵——文件名不可信，须按内容定位
 unzip -l samples/apks/app_packed_v3.apk
 #   => 侧表变成 assets/brand_res_v3.dat（资源名混淆）+ 多出低熵 config.txt（诱饵，骗"按熵找 payload"）
 ```
 
-①–③ 定性「一代整体加密」；④ 看「类抽取」与一代的结构差异；⑤ 看「资源名混淆 + 诱饵」对文件名/熵判定的干扰。三代的逐步手脱展开见 「判定」（判定）/ 「脱壳」（脱壳）。
+①–③ 定性「一代整体加密」；④ 看「类抽取」与一代的结构差异；⑤ 看「资源名混淆 + 诱饵」对文件名/熵判定的干扰。三代的逐步手脱展开见「判定」与「脱壳」两节。
 
 ### 文件与样本索引
 
-`tools/`（本文档**不使用**，仅列作对照；手脱只用系统通用工具）：
+`tools/`（本文档**不使用**，仅列作对照；手脱用通用工具 + GUI 工具）：
 
 | 工具 | 本文档对应手脱手段 |
 |------|--------------------|
-| `detect.py` | `unzip -l` + `aapt2` + `xxd` + 熵工具（「判定」） |
+| `detect.py` | `unzip -l` + `aapt2` + `xxd` + `apkutil entropy` / `binwalk -E` + `jadx` 反编译（「判定」） |
 | `unpack_v1.py` | `xxd` 读 payload + 手算 XOR + 写回 dex（「脱壳 · 一代」） |
 | `unpack_v2.py` | `xxd` 读 `code_item.insns` + 侧表解密 + 回填（「脱壳 · 二/三代」） |
 | `verify.py` | `sha256sum` + `cmp` + `grep`（「验证」节） |
 | `walkthrough.py` | 手动读 dex 头偏移（「字节偏移指南」） |
 | `reset_lab.py` | `cp pristine/* samples/`（「复位」） |
 
-`samples/` 清单与 `SCRIPT.md` 「文件与样本索引」 完全相同（一代 `v1` / 二代 `v2` / 三代 `v3` / 变种 `v2_variant` / VMP `app_vmp` / SO `app_so_packed` / 负样本）。
+`samples/` 清单与 `SCRIPT.md`「文件与样本索引」完全相同（一代 `v1` / 二代 `v2` / 三代 `v3` / 变种 `v2_variant` / VMP `app_vmp` / SO `app_so_packed` / 负样本）。
 
 ---
 
@@ -69,7 +71,7 @@ unzip -l samples/apks/app_packed_v3.apk
 ```
 ajiami/
 ├── samples/         # 干净基线样本（手脱对象）
-├── pristine/        # samples/ 的 sha256 清单备份（「复位」 复位用）
+├── pristine/        # samples/ 的 sha256 清单备份（「复位」节用）
 ├── analysis_output/  # 脱壳还原产物（写到这里）
 ├── app/ shell/ build/ tools/ logs/   # 源码/构建/脚本/日志
 ```
@@ -80,32 +82,32 @@ ajiami/
 
 ## 知识点总览（三代演化 + 保护体系）
 
-> 本节只讲**原理**；每小节的「判定」与「脱壳」分别落到 「判定」 / 「脱壳」 的通用工具演示。（正文与 `SCRIPT.md` 「知识点」 完全一致，便于单文档自包含。）
+> 本节只讲**原理**；每小节的「判定」与「脱壳」分别落到「判定」「脱壳」两节的通用工具演示。（正文与 `SCRIPT.md`「知识点」完全一致，便于单文档自包含。）
 
 ### 完整保护体系总览
-Ajiami 是多层叠加：`DEX 保护`（整体加密/代码分离/函数抽取/动态还原/DEX VMP）、`Native 保护`（SO 加壳/SO Linker/SO 防调用/SO VMP）、`Java→Native Java2CPP`、`对抗`（防调试/防注入/防 Hook/完整性校验/签名保护）。本工程样本覆盖 DEX 保护主线；其余在 「DEX VMP」 起补齐知识框架。**两条原则**：① DEX 与 Native 常形成链，须同时进 ELF/SO；② 不只盯 `classes.dex`，要查 `assets/` `lib/` `res/` 与非标准文件。
+Ajiami 是多层叠加：`DEX 保护`（整体加密/代码分离/函数抽取/动态还原/DEX VMP）、`Native 保护`（SO 加壳/SO Linker/SO 防调用/SO VMP）、`Java→Native Java2CPP`、`对抗`（防调试/防注入/防 Hook/完整性校验/签名保护）。本工程样本覆盖 DEX 保护主线；其余在「DEX VMP」节起补齐知识框架。**两条原则**：① DEX 与 Native 常形成链，须同时进 ELF/SO；② 不只盯 `classes.dex`，要查 `assets/` `lib/` `res/` 与非标准文件。
 
 ### 一代 · DEX 整体加密 **[可验证]**
-业务 `classes.dex` 整体加密塞进 `assets/`；`classes.dex` 退化成极小壳，`Application` 指向 `ProxyApplication`，运行期 `DexClassLoader` 加载真 dex。**结构特征**：壳 dex 无业务类；`assets/` 高熵文件（本工程 `ijm_payload.bin` 熵 **7.869**）；payload 容器 `[int32_le 长度][magic 'AJM\x01'][XOR 密文]`；Manifest 声明业务类在所有 dex 并集里不存在。**判定 → 「判定 · 一代」；脱壳 → 「脱壳 · 一代」。**
+业务 `classes.dex` 整体加密塞进 `assets/`；`classes.dex` 退化成极小壳，`Application` 指向 `ProxyApplication`，运行期 `DexClassLoader` 加载真 dex。**结构特征**：壳 dex 无业务类；`assets/` 高熵文件（本工程 `ijm_payload.bin` 熵 **7.869**）；payload 容器 `[int32_le 长度][magic 'AJM\x01'][XOR 密文]`；Manifest 声明业务类在所有 dex 并集里不存在。**判定 →「判定 · 一代」节；脱壳 →「脱壳 · 一代」节。**
 
 ### 二代 · 类抽取 **[可验证]**
-保留类名/方法名，把每个 `code_item.insns` 抽空成 `0x00`（nop，dex 仍合法），真指令加密存进 `assets/` 侧表（magic `AJMT`），运行期按 `code_off` 回填。**结构特征**：空方法率（本工程 **22/44 = 50%**）；侧表条目 `u4 class_idx|u4 method_idx|u4 code_off|u4 insns_len|密文`。**判定 → 「判定 · 二代」；脱壳 → 「脱壳 · 二/三代」。**
+保留类名/方法名，把每个 `code_item.insns` 抽空成 `0x00`（nop，dex 仍合法），真指令加密存进 `assets/` 侧表（magic `AJMT`），运行期按 `code_off` 回填。**结构特征**：空方法率（本工程 **22/44 = 50%**）；侧表条目 `u4 class_idx|u4 method_idx|u4 code_off|u4 insns_len|密文`。**判定 →「判定 · 二代」节；脱壳 →「脱壳 · 二/三代」节。**
 
 ### 三代 · 选择性抽取 + 混淆 + 诱饵 **[可验证]**
-只抽敏感类（`SecretLogic`+`TokenUtil`）→ 整体空率压到 **18.18%（8/44）**；资源名混淆（侧表改名 `brand_res_v3.dat`）；诱饵 `config.txt` 骗「按熵找 payload」。**结构特征**：整体空率低，但存在**局部 100% 空方法类**（SecretLogic 4/4、TokenUtil 4/4）→ 需**下钻单类**（B3\*）。**判定 → 「判定 · 三代」；脱壳 → 「脱壳 · 二/三代」。**
+只抽敏感类（`SecretLogic`+`TokenUtil`）→ 整体空率压到 **18.18%（8/44）**；资源名混淆（侧表改名 `brand_res_v3.dat`）；诱饵 `config.txt` 骗「按熵找 payload」。**结构特征**：整体空率低，但存在**局部 100% 空方法类**（SecretLogic 4/4、TokenUtil 4/4）→ 需**下钻单类**（B3\*）。**判定 →「判定 · 三代」节；脱壳 →「脱壳 · 二/三代」节。**
 
 ### 变种样本 · 字符串混淆 **[可验证]**
-`make_variant.py` 把家族串做**等长字母表倒序映射**（`ijiami`→`rqrznr`）：朴素字符串判定**完全失效**，结构**一个字节没变**照常命中 → 「禁止只靠字符串下结论」的活证。**判定 → 「判定 · 变种」。**
+`make_variant.py` 把家族串做**等长字母表倒序映射**（`ijiami`→`rqrznr`）：朴素字符串判定**完全失效**，结构**一个字节没变**照常命中 →「禁止只靠字符串下结论」的活证。**判定 →「判定 · 变种」节。**
 
 ### DEX VMP（虚拟化） **[可验证]**
-原始指令 → 自定义字节码 → 自家虚拟机解释执行；无永久固定 opcode 映射。**静态特征**：类名/方法名/字段还在，但真实 dalvik 指令已不是原形式（`invoke-static` 到解释器）。→ 空方法率**不升高，B3 直接失效**（关键区别）。识别靠：方法体「调用解释器」异常形态 + `assets/` 非 dalvik 自定义字节码 + 解释器类/SO。本工程 `app_vmp.apk` 是「不明方案被放过」教学样本（「判定 · VMP 样本」），属认知边界。
+原始指令 → 自定义字节码 → 自家虚拟机解释执行；无永久固定 opcode 映射。**静态特征**：类名/方法名/字段还在，但真实 dalvik 指令已不是原形式（`invoke-static` 到解释器）。→ 空方法率**不升高，B3 直接失效**（关键区别）。识别靠：方法体「调用解释器」异常形态 + `assets/` 非 dalvik 自定义字节码 + 解释器类/SO。本工程 `app_vmp.apk` 是「不明方案被放过」教学样本（见「判定 · VMP 样本」节），属认知边界。
 
 ### 独立数据载荷 + 多 SO 执行链 **[知识框架]**
-真实样本常见 `assets/ijiami.ajm` `lib/libexec.so` 等「缩壳 DEX + 独立载荷 + Native 链」。分析要查 `assets/`（大高熵文件）、`lib/*/`（加固 SO）、`res/`、其它非标准文件。本工程 DEX 样本不含这类独立 SO 载荷，但 「判定 · SO 样本(B13)」 的 **B13** 已能覆盖 SO 侧。
+真实样本常见 `assets/ijiami.ajm` `lib/libexec.so` 等「缩壳 DEX + 独立载荷 + Native 链」。分析要查 `assets/`（大高熵文件）、`lib/*/`（加固 SO）、`res/`、其它非标准文件。本工程 DEX 样本不含这类独立 SO 载荷，但「判定 · SO 样本(B13)」节的 **B13** 已能覆盖 SO 侧。
 **可跑的检查（通用工具）**：`unzip -l <apk>` 列全条目即手动版「不只盯 classes.dex」；逐条目算熵见「判定 · 一代」节的做法。
 
 ### Native 保护：SO 加壳 / SO Linker / SO 防调用 / SO VMP **[可验证]**
-**SO Linker**：非标准 Native 加载/链接（自己按 Program Header 装载，不写标准节头）。本工程已有 SO 样本 `app_so_packed.apk`（NDK 编译、节头表剥离模拟自实现 Linker），由 **B13** 自动识别；SO VMP / SO 防调用仍属知识框架（待扩展）。**判定 → 「判定 · SO 样本(B13)」。**
+**SO Linker**：非标准 Native 加载/链接（自己按 Program Header 装载，不写标准节头）。本工程已有 SO 样本 `app_so_packed.apk`（NDK 编译、节头表剥离模拟自实现 Linker），由 **B13** 自动识别；SO VMP / SO 防调用仍属知识框架（待扩展）。**判定 →「判定 · SO 样本(B13)」节。**
 
 ### Java2CPP（Java → Native） **[知识框架]**
 Java → C++ → SO，DEX Java 代码减少、逻辑转 Native。**识别**：DEX 干净 + SO 庞大 + 业务减少 → 考虑 Java2CPP；判据 B12（native 占比 ≥ 30%）。本工程无样本，属知识框架。同样让 **B3 失效**。
@@ -167,9 +169,13 @@ aapt2 dump xmltree --file AndroidManifest.xml samples/apks/app_packed_v1.apk > /
 #   => activity android:name="com.demo.target.MainActivity"（步骤⑥要和 dex 类对比）
 
 # 算熵：确认 payload 是加密（> 7.5 基本可认定）
-# 优先用本仓工具（结果带字节数，可直接对照 detect.py 输出）
+# 路线一：本仓工具（结果带字节数，可直接对照 detect.py 输出）
 python tools/apkutil.py entropy samples/payloads/payload_v1.bin
 #   => 7.8690 bit/byte  (4532 bytes)
+# 路线二：binwalk -E 出熵曲线图（看整体分布；对 APK 内成员需先解出）
+unzip -o -q samples/apks/app_packed_v1.apk assets/ijm_payload.bin -d /tmp/bw
+binwalk -E -p /tmp/bw/payload_entropy.png /tmp/bw/assets/ijm_payload.bin
+#   => 生成熵曲线 PNG：全程高位波动（≈7.9）= 加密数据；若前段低后段高则是"明文头 + 密文体"
 # 工具不可用时的一行手算版（纯标准库，结果应与工具完全一致）
 python -c "import math;from collections import Counter;b=open('samples/payloads/payload_v1.bin','rb').read();c=Counter(b);n=len(b);e=-sum((v/n)*math.log2(v/n) for v in c.values());print('entropy=%.4f'%e)"
 #   => entropy=7.8690
@@ -189,7 +195,7 @@ xxd -s 0xE10 -l 64 samples/dex/extracted_v2.dex
 
 **怎么判（对应 B3）**：`insns` 区全 `00` 且 `insns_size > 0` → 该方法被抽取。把每个 `code_item` 的 `insns_size` 累加，数「有 code_item 但指令长 0」的方法占比 = **空方法率**。二代是**全量抽取**，所有业务类 100% 空 → 整体空率 50%（22/44）。
 > 手算空方法率需逐类清点 `code_item`（用 `dexdump` 或 `xxd` 遍历），脚本 `detect.py` 的 B3 就是把这一步自动化。手动只需**确认存在大量 insns 全 0 的方法**即可定性「类抽取（二代）」。
-**失效边界**：依赖「`insns` 全 0 的 nop 形态」。改成 **DEX VMP**（`insns` 非零）或 **Java2CPP**（业务不在 DEX）→ 空方法率归零，**B3 / 手动判定都失效**（「判定 · VMP 样本」 / 「Java2CPP」）。
+**失效边界**：依赖「`insns` 全 0 的 nop 形态」。改成 **DEX VMP**（`insns` 非零）或 **Java2CPP**（业务不在 DEX）→ 空方法率归零，**B3 / 手动判定都失效**（「判定 · VMP 样本」/「Java2CPP」）。
 
 ### 三代 · 选择性抽取
 
@@ -216,7 +222,7 @@ python tools/apkutil.py entropy samples/payloads/payload_v1_variant.bin
 #   => 6.49 bit/byte   ← 仍是高熵侧表，只是名字变了
 ```
 
-**怎么判**：Manifest 里壳类名已变形 → 朴素字符串搜索（`ijiami`/`ProxyApplication`）**完全失效**；但 DEX 结构一个字节没变，空方法率仍 50%（「判定 · 二代」 同法）→ **结构判定照常命中**。这正是「禁止只靠字符串下结论、必须以结构特征为主」的活证。
+**怎么判**：Manifest 里壳类名已变形 → 朴素字符串搜索（`ijiami`/`ProxyApplication`）**完全失效**；但 DEX 结构一个字节没变，空方法率仍 50%（「判定 · 二代」同法）→ **结构判定照常命中**。这正是「禁止只靠字符串下结论、必须以结构特征为主」的活证。
 **失效边界**：朴素字符串可被混淆/加密彻底绕过；结构判定也可能被 VMP（空方法率归零）绕过——两者盲区相反互补，结论须叠加。
 
 ### VMP 样本 · 认知边界（手脱也定性不了）
@@ -243,6 +249,32 @@ unzip -l samples/apks/app_vmp.apk
 - `classes.dex` 在（2456 字节），**没有** `assets/` 高熵 payload → 不是一代；
 - 用 `xxd`/`dexdump` 看方法体，`insns` **非零**（是调用解释器的 `invoke-static`，不是全 0 的 nop）→ 不是二代/三代抽取；
 - 于是**静态结构层面无法定性** → 落入认知边界。真正识别须看：方法体是否「调用解释器」（`Vmp.run` 这类）+ 是否存在非法 dalvik 的自定义字节码载荷（`PROG_MIX` 这类 `byte[]`）。
+
+**用 jadx 看同一件事（GUI 工具路线）**：
+
+```bash
+# 反编译 VMP 样本，直接在 Java 源码层面看"方法退化成解释器调用"
+jadx -d /tmp/jadx_vmp --no-res samples/apks/app_vmp.apk
+```
+
+实测（`/tmp/jadx_vmp/sources/com/demo/vmapp/VmBusiness.java`，节选）：
+
+```java
+public class VmBusiness {
+    private static final byte[] PROG_MIX = {1, 0, 1, 1, 3, 2, 17, 4, 2, 3, 5, -1};   // ← 自定义字节码载荷
+
+    public static int mix(int i, int i2) {
+        return Vmp.run(PROG_MIX, new int[]{i, i2});    // ← 方法体只剩解释器调用 = B11 的可读形态
+    }
+
+    public static int plainAdd(int i, int i2) {
+        return i + i2;    // ← 未保护的方法保持正常（对照）
+    }
+}
+```
+
+**怎么读**：jadx 把 `detect.py` 的 B11（汇聚调用大方法）翻译成了肉眼可读的 Java——每个被虚拟化的方法都退化成 `Vmp.run(byte[], int[])` 一行，真实的算术逻辑进了 `PROG_*` 字节数组、由 `com.ijiami.vmp.Vmp.run` 的 `switch` 解释执行。**这就是 VMP**：类名/方法名/签名都在（JADX 里"看起来很正常"），但方法体已经不是原逻辑。反过来这解释了为什么 B3 空方法率对 VMP 恒为 0——`insns` 非零，只是"零业务语义"。
+**JADX 的盲区**：① `PROG_*` 字节码是自定义指令集，jadx 只能显示为 `byte[]` 字面量，**还原不了原逻辑**——这是 VMP 的设计目标，不是 jadx 的缺陷；② 对二代抽取样本，jadx 会把 `insns` 全 0 的方法显示为**空方法体**（`public int mix(int i, int i2) {}`），如果不看空方法率、只看"类还在"，会误以为没加固——所以判定要配合结构判据，GUI 工具解决的是"看懂"而不是"判别"。
 > 这是最有价值的反例：**A 与 B 各有盲区、正好互补**——变种上 A 漏报 B 命中；VMP 上 B 漏报 A 命中（包名恰有 `ijiami`）。结论只能：判定须多层证据叠加，单一指标不可押注。
 
 ### SO 样本 · B13（ELF 结构异常，纯 xxd 复现）
@@ -301,7 +333,7 @@ dexdump -d samples/apks/app_vmp.apk 2>/dev/null | grep -i "Vmp.run" | head
 手脱没有「一键脚本」，但可用循环把「判定」节的各代判断套到所有样本：
 
 ```bash
-# 对全部样本看 ZIP 条目 + 熵，人工对照 「判定」 的判读表
+# 对全部样本看 ZIP 条目 + 熵，人工对照「判定」的判读表
 for a in samples/apks/app_packed_v1.apk samples/apks/app_packed_v2.apk samples/apks/app_packed_v3.apk samples/apks/app_packed_v2_variant.apk; do
   echo "==== $a ===="; unzip -l "$a" | grep -E "classes.dex|assets/"
 done
@@ -311,7 +343,7 @@ done
 #   => v2_variant: classes.dex 大 + assets/rqn9xlwvh.yrm（变种，「判定 · 变种」）
 ```
 
-负样本工程（`neg_multidex` / `neg_highentropy` / `neg_native`）用来防止把多 dex / 高熵资源 / 合法 native 库误判成壳 —— 手脱时若 `unzip -l` 看到多 `classes*.dex` 或合法高熵资源，应**先排除**再下结论（对应 `SCRIPT.md` 「一键批量 + 负样本回归」 的双向回归）。
+负样本工程（`neg_multidex` / `neg_highentropy` / `neg_native`）用来防止把多 dex / 高熵资源 / 合法 native 库误判成壳 —— 手脱时若 `unzip -l` 看到多 `classes*.dex` 或合法高熵资源，应**先排除**再下结论（对应 `SCRIPT.md`「一键批量 + 负样本回归」的双向回归）。
 
 ---
 
@@ -343,7 +375,7 @@ i=3:  0x18 ^ 0x11 ^ 0x03 = 0x0A  → '\n'
 ```
 
 **怎么判**：算出 `"dex\n037\0"` 即密钥/算法都对，可继续解出完整 dex。把 4524 字节按此 XOR 流逐字节还原，即得原始 `classes.dex`，写出到 `analysis_output/unpack_v1_dex.dex`。
-**失效边界**：payload 头部顺序是 `[长度][magic AJM\x01][密文]`，**magic 在偏移 4 不在 0**；若样本改了 XOR 密钥/算法，前 4 字节解不出 `dex\n` —— 此时须回 「字节偏移指南」 看字节确认密钥。
+**失效边界**：payload 头部顺序是 `[长度][magic AJM\x01][密文]`，**magic 在偏移 4 不在 0**；若样本改了 XOR 密钥/算法，前 4 字节解不出 `dex\n` —— 此时须回「字节偏移指南」看字节确认密钥。
 
 ### 二代 / 三代 · 手填 insns + 重算校验
 
@@ -367,7 +399,7 @@ xxd -s 0xE10 -l 64 samples/dex/classes_merged_orig.dex
 **失效边界**：依赖侧表 `AJMT` 魔数 + 标准 `code_item` 布局。若改 VMP（无侧表、指令是解释器调用）或 Java2CPP（无 dex 业务），侧表不存在 → 无法手填，须转动态分析（认知边界）。
 
 ### 变种脱壳
-与 「脱壳 · 二/三代」 完全相同（结构一个字节没变），**唯一区别**：回填后的 dex 是带混淆字符串的版本，对照黄金须用 `build/variant/merged_orig_variant.dex`（字符串混淆版），否则逐字节对照失败。
+与「脱壳 · 二/三代」完全相同（结构一个字节没变），**唯一区别**：回填后的 dex 是带混淆字符串的版本，对照黄金须用 `build/variant/merged_orig_variant.dex`（字符串混淆版），否则逐字节对照失败。
 
 ### 结果对照表（手脱目标）
 
@@ -393,11 +425,11 @@ grep -c "AJM-ANCHOR" samples/dex/classes_merged_orig.dex      # 应 = 11
 
 # ③ 字节差异定位（不一致时给首差异偏移）
 cmp analysis_output/unpack_v3_dex.dex samples/dex/classes_merged_orig.dex
-#   => 无输出 = 完全一致；有输出 = 首个差异偏移，据此回 「脱壳」 定位哪步写错
+#   => 无输出 = 完全一致；有输出 = 首个差异偏移，据此回「脱壳」定位哪步写错
 ```
 
 **三项分别说明**：① sha256 一致即逐字节相同；② `AJM-ANCHOR-*` 是业务预埋锚点，缺一个说明没真解开（哪怕长度对）；③ `cmp` 给首个差异字节偏移，是定位「哪一步写错」的入口。
-> 变种黄金是混淆版，锚点数显示 0/0 属正常。这与 `SCRIPT.md` 「验证」节的 `verify.py` 三项完全对应，只是用通用工具替代脚本。
+> 变种黄金是混淆版，锚点数显示 0/0 属正常。这与 `SCRIPT.md`「验证」节的 `verify.py` 三项完全对应，只是用通用工具替代脚本。
 
 ---
 
@@ -442,7 +474,7 @@ xxd -l 112 samples/dex/classes_orig.dex
 
 `class_defs_size = 7` 与脚本判定的 `class_defs=7` 完全对得上 ——「手算 vs 工具」互相验证。
 
-**code_item 布局**（`code_off` 为起点），用于 「脱壳 · 二/三代」 定位 insns：
+**code_item 布局**（`code_off` 为起点），用于「脱壳 · 二/三代」定位 insns：
 
 | 偏移 | 字段 | 大小 |
 |------|------|------|
@@ -454,7 +486,7 @@ xxd -l 112 samples/dex/classes_orig.dex
 | `+0x0C` | **insns_size**（单位 u2 code unit） | u4 |
 | `+0x10` | **insns**（真实指令，`insns_size*2` 字节） | — |
 
-> 所以：**insns 区偏移 = `code_off + 16`**（即 「判定 · 二代」 / 「脱壳 · 二/三代」 里 `0xE00 + 16 = 0xE10` 的来历）。
+> 所以：**insns 区偏移 = `code_off + 16`**（即「判定 · 二代」/「脱壳 · 二/三代」里 `0xE00 + 16 = 0xE10` 的来历）。
 
 ---
 
@@ -471,7 +503,7 @@ cp pristine/apks/app_packed_v2.apk samples/apks/app_packed_v2.apk
 cp -r samples/ pristine/
 ```
 
-> 手脱不改 `samples/` 最佳；若改了，用上面命令复位。`SCRIPT.md` 「复位」 的 `reset_lab.py` 是同一逻辑的脚本化（带 sha256 清单校验），`status` 能立刻区分「样本被改坏」还是「脱壳逻辑错」。
+> 手脱不改 `samples/` 最佳；若改了，用上面命令复位。`SCRIPT.md`「复位」的 `reset_lab.py` 是同一逻辑的脚本化（带 sha256 清单校验），`status` 能立刻区分「样本被改坏」还是「脱壳逻辑错」。
 
 ---
 
@@ -486,8 +518,8 @@ cp -r samples/ pristine/
 ④ xxd 读 code_item.insns (code_off+16)   看 insns 是否全 0 → 算空方法率
 ⑤ 类差集（Manifest 声明 vs dex 实际类）  声明了却不在 dex → 动态加载（一代）
         │
-        ├─ ① classes.dex 小 + ③ 高熵 payload + ⑤ 缺失类  ─► 一代整体加密 → 「脱壳 · 一代」 手算 XOR
-        └─ ④ insns 全 0（空方法率>40% 或局部 100% 空）     ─► 二/三代类抽取 → 「脱壳 · 二/三代」 手填 insns
+        ├─ ① classes.dex 小 + ③ 高熵 payload + ⑤ 缺失类  ─► 一代整体加密 →「脱壳 · 一代」手算 XOR
+        └─ ④ insns 全 0（空方法率>40% 或局部 100% 空）     ─► 二/三代类抽取 →「脱壳 · 二/三代」手填 insns
 收尾：sha256sum + grep AJM-ANCHOR + cmp  ← 与黄金样本逐字节对照
 ```
 
