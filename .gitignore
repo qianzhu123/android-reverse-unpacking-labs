@@ -1,26 +1,19 @@
-# ============================================================
-#  Android Reverse-Engineering / Unpacking study repo
+
 #  (360jiagu, ajiami, upx_practice + shared PROMPT.md)
+#  Android Reverse-Engineering / Unpacking study repo
 #  ollvm is an INDEPENDENT git repo -> excluded at the bottom.
-# ============================================================
-
+# ---- Exclude the independent ollvm repo (own git history) ----
 # ---- Generated outputs (never commit) ----
-analysis_output/
-unpacker_output/
-logs/
-__pycache__/
-*.pyc
-
-# PyInstaller exe build artifacts (build via unpacker/build_exe.py, not committed)
-/dist/
-/build/
-unpacker/dist/
-unpacker/build/
-*.spec
-
+# ---- IDE / OS junk ----
+# ---- Third-party / local binaries ----
+# ============================================================
 # Build outputs: keep build/*.sh, build/*.py, build/env.sh as lab tooling;
-# ignore only the generated sub-directories. Use **/ so the pattern matches at
+# Local environment overrides
+# PyInstaller exe build artifacts (build via unpacker/build_exe.py, not committed)
+# Signing keystore must never be committed
+# UPX packer binaries (upx.exe at project root, upx396.exe in tools/) are not committed.
 # any depth (each lab nests them under its own folder, e.g. ajiami/build/v1/).
+# ignore only the generated sub-directories. Use **/ so the pattern matches at
 **/build/_probe/
 **/build/merged/
 **/build/neg/
@@ -31,24 +24,24 @@ unpacker/build/
 **/build/v3/
 **/build/variant/
 **/build/vmp/
-
-# Signing keystore must never be committed
-*.keystore
-
-# ---- Third-party / local binaries ----
-# UPX packer binaries (upx.exe at project root, upx396.exe in tools/) are not committed.
 *.exe
-
-# Local environment overrides
-local.properties
-*.local
-
-# ---- IDE / OS junk ----
-.idea/
 *.iml
-.vscode/
+*.keystore
+*.local
+*.pyc
+*.spec
 .DS_Store
-Thumbs.db
-
-# ---- Exclude the independent ollvm repo (own git history) ----
+.idea/
+.vscode/
+/build/
+/dist/
 /ollvm/
+JSON
+Thumbs.db
+__pycache__/
+analysis_output/
+local.properties
+logs/
+unpacker/build/
+unpacker/dist/
+unpacker_output/
