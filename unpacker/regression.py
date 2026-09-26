@@ -146,10 +146,17 @@ def run_cross():
     return out
 
 
-def main():
+def main_with_repo(argv, repo_root=None):
+    """exe 入口（main.py）复用：允许运行时注入仓库根。"""
+    global REPO_ROOT
+    if repo_root:
+        import labs as _labs
+        _labs.REPO_ROOT = repo_root
+        labs.REPO_ROOT = repo_root
+        REPO_ROOT = repo_root
     ap = argparse.ArgumentParser(description='跨工程双向回归（全仓库混淆矩阵）')
     ap.add_argument('--json', action='store_true', help='机器可读输出')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     rows = run_matrix()
     cross = run_cross()
@@ -196,6 +203,10 @@ def main():
         return 1
     print('[+] 全部通过。')
     return 0
+
+
+def main():
+    return main_with_repo(sys.argv[1:])
 
 
 if __name__ == '__main__':

@@ -28,7 +28,13 @@ import importlib.util
 import os
 import sys
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def _default_repo_root():
+    """源码场景：仓库根 = 本文件( unpacker/labs.py )上一级。"""
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+REPO_ROOT = _default_repo_root()
 LABS = {
     '360jiagu':     os.path.join(REPO_ROOT, '360jiagu'),
     'upx_practice': os.path.join(REPO_ROOT, 'upx_practice'),
@@ -96,4 +102,6 @@ def load_ajiami_verify():
 
 
 def lab_path(lab, *parts):
-    return os.path.join(LABS[lab], *parts) if parts else LABS[lab]
+    """lab 内路径（跟随 REPO_ROOT，exe 场景 REPO_ROOT 可被 main.py 运行时改写）。"""
+    base = os.path.join(REPO_ROOT, lab)
+    return os.path.join(base, *parts) if parts else base

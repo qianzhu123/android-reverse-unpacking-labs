@@ -1,9 +1,34 @@
 # unpacker — 统一解固工具（判定 / 路由解固 / 跨工程回归）
 
 > 独立工具，聚合三个练习工程（`360jiagu` / `upx_practice` / `ajiami`）的检测器与解壳器。
-> **只读复用**：`labs.py` 通过 `sys.path` 注入 + 按文件路径加载各 lab 的模块，
-> 不复制、不修改任何练习工程的代码；本工具的失败会反过来暴露 lab 接口变更
-> （跨工程回归即为此兜底）。
+> **只读复用**：`labs.py` 通过按文件路径加载各 lab 的模块，不复制、不修改任何练习工程的代码；
+> 本工具的失败会反过来暴露 lab 接口变更（跨工程回归即为此兜底）。
+
+## 两种使用形态
+
+**① 源码**（开发 / 随仓库使用）：
+
+```bash
+python unpacker/main.py analyze 360jiagu/libtarget_360_variant.so
+python unpacker/main.py unpack  360jiagu/libtarget_360_variant.so --pristine 360jiagu/libtarget_orig.so
+python unpacker/main.py regression
+# 各子模块也可直接跑（与之前完全兼容）：
+python unpacker/analyzer.py ...   python unpacker/unpack.py ...   python unpacker/regression.py
+```
+
+**② 单文件 exe**（分发 / 拖拽使用）：
+
+```bash
+python unpacker/build_exe.py        # PyInstaller 打包 -> dist/unpacker.exe（约 7 MB）
+dist/unpacker.exe analyze  <文件>    # 或直接把文件拖到 exe 图标上（无子命令=判定）
+dist/unpacker.exe unpack   <文件> [--pristine 黄金] [-o 输出目录]
+dist/unpacker.exe regression
+```
+
+exe 的仓库定位（解固路由依赖三个 lab 的模块）：**exe 所在目录向上找** >
+`ANDROID_REVERSE_LABS` 环境变量 > `--repo <仓库根>` > exe 内置兜底副本（打包时把三个
+lab 的 `tools/*.py` 收进 exe；找不到仓库时判定/解固照常可用，但不保证与 lab 最新代码同步）。
+exe 单独分发时产物写在**被解固文件旁边**的 `unpacker_output/`，不写系统临时目录。
 
 ## 定位（诚实声明）
 
@@ -12,11 +37,9 @@
 对未知输入按仓库纪律降级——`疑似`（须动态 trace）或 `未见已知加固特征（≠未加固）`，
 绝不假装能脱、绝不输出"未加固"的全称否定结论。
 
-## 快速上手
+## 快速上手（源码形态，在仓库根执行）
 
 ```bash
-# 从仓库根执行（相对路径按仓库根解析）
-
 # ① 判定：拖入任意 APK / dex / so，只读体检，不修改文件
 python unpacker/analyzer.py 360jiagu/libtarget_360_variant.so
 #   => 类型 elf | [360 检测器] 得分=16 | [UPX 检测器] 得分=16 | 统一结论: ★ 变种 360 加固…
@@ -50,14 +73,16 @@ PATH 没有才回退各 lab 自带的 `upx.exe`（4.2.4，lab 实测基线）。
 设成 exe 路径会让 upx 5.2.1 直接报 `invalid string ... in environment variable 'UPX'`。
 因此 `unpack.py` 调用 lab solve 前会摘掉进程 env 的 `UPX`，改走 `--upx` 显式参数。
 
-## 三个脚本
+## 文件清单
 
-| 脚本 | 作用 |
+| 文件 | 作用 |
 |---|---|
 | `labs.py` | 只读桥接层：按文件路径加载各 lab 模块（无包式 import，互不污染） |
+| `main.py` | exe 入口：`analyze` / `unpack` / `regression` / 拖拽兜底；仓库定位与 UTF-8 控制台 |
 | `analyzer.py` | 统一判定入口；SO 管线跑 360+UPX 双检测器互为交叉验证，APK/dex 走 ajiami |
 | `unpack.py` | 解固入口：判定 → 路由 → 两级验证（`--pristine` 给黄金样本则 byte-exact） |
 | `regression.py` | 全仓库混淆矩阵：19 样本 × 双向断言 + SO 检测器交叉验证；exit 0 = 全绿 |
+| `build_exe.py` | PyInstaller 打包脚本：单 exe + 三个 lab tools/ 内置兜底副本 |
 
-产物目录：`unpacker_output/<样本名>/`（不污染样本所在目录）。
+产物目录：`unpacker_output/`（在被解固文件旁边，不污染样本目录）。
 输出约定：`[!]=失败/告警`、`[*]=步骤`、`[+]=成功`；每个结论都附认知边界提示。

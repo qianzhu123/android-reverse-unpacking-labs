@@ -11,6 +11,11 @@ logs/
 __pycache__/
 *.pyc
 
+# PyInstaller exe build artifacts (build via unpacker/build_exe.py, not committed)
+/dist/
+/build/
+*.spec
+
 # Build outputs: keep build/*.sh, build/*.py, build/env.sh as lab tooling;
 # ignore only the generated sub-directories. Use **/ so the pattern matches at
 # any depth (each lab nests them under its own folder, e.g. ajiami/build/v1/).

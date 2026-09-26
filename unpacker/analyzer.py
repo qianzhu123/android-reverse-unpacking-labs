@@ -171,23 +171,33 @@ def print_report(res, show_raw=False):
     print('=' * 72 + '')
 
 
-def main():
+def main_with_repo(argv, repo_root=None):
+    """exe 入口（main.py）复用：允许运行时注入仓库根（PyInstaller 场景没有固定 __file__ 布局）。"""
+    global REPO_ROOT
+    if repo_root:
+        labs.REPO_ROOT = repo_root
+        import labs as _labs
+        _labs.REPO_ROOT = repo_root
+        REPO_ROOT = repo_root
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(
         description='统一解固工具 · 判定入口（只读体检）。拖入 APK / dex / so 均可。')
-    # 相对路径按仓库根解析（与各 lab 的习惯一致：cd <lab> 后跑相对路径）
     ap.add_argument('files', nargs='+', help='待判定文件（APK / dex / so），可多个')
     ap.add_argument('--json', action='store_true', help='输出 JSON（含原始检测器输出）')
     ap.add_argument('--verify', action='store_true',
                     help='SO 变种壳魔数候选用 upx -t 实证（需 upx 在 PATH 或 UPX 环境变量）')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     results = []
     fail = 0
     for p in args.files:
-        full = p if os.path.isabs(p) else os.path.join(REPO_ROOT, p)
+        # 路径解析：绝对路径直接用；相对路径先按【当前工作目录】找（exe 拖拽场景
+        # 文件就在 cwd），找不到再按仓库根找（源码场景 cd <lab> 后跑相对路径的习惯）。
+        cand_cwd = p if os.path.isabs(p) else os.path.abspath(p)
+        cand_repo = p if os.path.isabs(p) else os.path.join(REPO_ROOT, p)
+        full = cand_cwd if os.path.exists(cand_cwd) else cand_repo
         if not os.path.exists(full):
-            print('[!] 不存在: %s' % p)
+            print('[!] 不存在: %s（也试过仓库根下的 %s）' % (p, cand_repo))
             fail += 1
             continue
         res = analyze(full, verify=args.verify)
@@ -197,6 +207,10 @@ def main():
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
     return 1 if fail else 0
+
+
+def main():
+    return main_with_repo(sys.argv[1:])
 
 
 if __name__ == '__main__':

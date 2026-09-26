@@ -236,7 +236,14 @@ def route(res, path, outdir, pristine):
     return ok, outs
 
 
-def main():
+def main_with_repo(argv, repo_root=None):
+    """exe 入口（main.py）复用：允许运行时注入仓库根。"""
+    global REPO_ROOT
+    if repo_root:
+        import labs as _labs
+        _labs.REPO_ROOT = repo_root
+        labs.REPO_ROOT = repo_root
+        REPO_ROOT = repo_root
     ap = argparse.ArgumentParser(
         description='统一解固工具 · 解固入口：判定 → 按壳种路由解法 → 两级验证')
     ap.add_argument('input', help='待解固文件（APK / so）')
@@ -244,31 +251,47 @@ def main():
                     help='产物目录（默认 unpacker_output/<文件名>/）')
     ap.add_argument('--pristine', default=None,
                     help='黄金对照样本（给了就做 byte-exact 验证，不给只做 anchor-only）')
-    args = ap.parse_args()
+    ap.add_argument('--repo', default=None,
+                    help='仓库根目录（exe 场景；源码场景自动推导，不需要）')
+    args = ap.parse_args(argv)
 
-    path = args.input if os.path.isabs(args.input) else os.path.join(REPO_ROOT, args.input)
+    # 路径解析：绝对直接用；相对先按 cwd（exe 拖拽场景），再按仓库根（源码习惯）
+    cand_cwd = args.input if os.path.isabs(args.input) else os.path.abspath(args.input)
+    cand_repo = args.input if os.path.isabs(args.input) else os.path.join(REPO_ROOT, args.input)
+    path = cand_cwd if os.path.exists(cand_cwd) else cand_repo
     if not os.path.exists(path):
-        print('[!] 不存在: %s' % args.input)
+        print('[!] 不存在: %s（也试过仓库根下的 %s）' % (args.input, cand_repo))
         return 1
+    # 产物目录：默认放【被解固文件旁边】的 unpacker_output/（exe 单独分发场景
+    # 不能往 _MEIxxxx 临时解包目录写——进程退出即消失）；-o 显式指定则尊重用户。
     outdir = args.outdir or os.path.join(
-        REPO_ROOT, 'unpacker_output', os.path.splitext(os.path.basename(path))[0])
-    pristine = (args.pristine if os.path.isabs(args.pristine or '')
-                else (os.path.join(REPO_ROOT, args.pristine) if args.pristine else None))
+        os.path.dirname(os.path.abspath(path)), 'unpacker_output',
+        os.path.splitext(os.path.basename(path))[0])
+    if args.pristine:
+        pc = (args.pristine if os.path.isabs(args.pristine)
+              else os.path.abspath(args.pristine))
+        pristine = pc if os.path.exists(pc) else os.path.join(REPO_ROOT, args.pristine)
+    else:
+        pristine = None
 
     print('[*] ① 判定（只读体检）...')
     res = analyze(path)
     print('    判定结论: %s' % res.get('verdict'))
-    print('[*] ② 按壳种路由解法，产物目录: %s' % os.path.relpath(outdir, REPO_ROOT))
+    print('[*] ② 按壳种路由解法，产物目录: %s' % outdir)
     ok, outs = route(res, path, outdir, pristine)
     if not outs:
         return 1
     print('[*] ③ 完成。产物:')
     for o in outs:
-        print('    %s (%d bytes)' % (os.path.relpath(o, REPO_ROOT), os.path.getsize(o)))
+        print('    %s (%d bytes)' % (o, os.path.getsize(o)))
     print('[%s] 解固%s（验证等级: %s）' % (
         '+' if ok else '!', '成功' if ok else '失败',
         'byte-exact' if pristine else 'anchor-only'))
     return 0 if ok else 1
+
+
+def main():
+    return main_with_repo(sys.argv[1:])
 
 
 if __name__ == '__main__':
