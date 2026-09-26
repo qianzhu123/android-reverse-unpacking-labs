@@ -16,9 +16,8 @@ gui.py — unpacker 的图形界面（tkinter + tkinterdnd2 真拖放）。
   · 判定 = analyzer.analyze（只读体检），结果带认知边界提示
   · 解固 = unpack.main_with_repo（判定→路由→两级验证）；
     黄金样本可选，不选则明确提示 anchor-only 级验证
+    产物位置可选（「选产物位置…」），不选则默认与拖入文件同目录（<样本名>_unpacked.*）
   · 回归矩阵 = regression.main_with_repo（19 样本双向断言）
-  · 产物固定写在被解固文件旁边的 unpacker_output/（不在 GUI 里另选目录，保持简单；
-    CLI 用户仍可用 unpack -o）
 
 长任务在后台线程跑，界面不冻结；运行中按钮禁用 + 状态栏提示。
 """
@@ -103,6 +102,12 @@ class Gui:
         self.btn_reg = ttk.Button(btns, text='③ 回归矩阵', command=self._do_regression)
         self.btn_reg.pack(side='right', padx=4)
 
+        out_row = ttk.Frame(self.root)
+        out_row.pack(fill='x', **pad)
+        ttk.Button(out_row, text='选产物位置（可选）', command=self._pick_outdir).pack(side='left', padx=4)
+        self.outdir_var = tk.StringVar(value='产物默认与拖入文件同目录（<样本名>_unpacked.*）')
+        ttk.Label(out_row, textvariable=self.outdir_var, foreground='#6c757d').pack(side='left', padx=2)
+
         body = ttk.Frame(self.root)
         body.pack(fill='both', expand=True, **pad)
         self.out = tk.Text(body, wrap='char', font=('Consolas', 9), state='disabled')
@@ -177,6 +182,17 @@ class Gui:
         else:
             self._pristine = None
 
+    def _pick_outdir(self):
+        p = filedialog.askdirectory(title='选择产物目录（不选=默认与拖入文件同目录）')
+        if p:
+            self._outdir = os.path.abspath(p)
+            self.outdir_var.set('产物目录: %s' % self._outdir)
+            self._say('[*] 产物目录已指定: %s' % self._outdir)
+        else:
+            self._outdir = None
+            self.outdir_var.set('产物默认与拖入文件同目录（<样本名>_unpacked.*）')
+            self._say('[*] 产物目录恢复默认：与拖入文件同目录')
+
     # -------------------------------------------------------- 任务执行
     def _run_task(self, name, fn):
         if self.worker and self.worker.is_alive():
@@ -231,6 +247,8 @@ class Gui:
         if not p:
             return
         argv = [p]
+        if getattr(self, '_outdir', None):
+            argv += ['-o', self._outdir]
         if getattr(self, '_pristine', None):
             argv += ['--pristine', self._pristine]
         else:
@@ -251,7 +269,7 @@ class Gui:
 
     def run(self):
         self._say('[*] unpacker GUI 就绪。仓库根: %s' % self.repo)
-        self._say('[*] 用法：拖入文件 → ① 判定 → （可选：选黄金样本）→ ② 解固；③ 回归矩阵不依赖文件。')
+        self._say('[*] 用法：拖入文件 → ① 判定 →（可选：黄金样本 / 产物位置）→ ② 解固；产物默认在拖入文件同目录。')
         self.root.mainloop()
 
 

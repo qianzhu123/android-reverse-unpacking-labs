@@ -26,7 +26,9 @@ python unpacker/build_exe.py        # PyInstaller 打包 -> unpacker/dist/unpack
   - 顶部拖放区（全窗口接受拖放）：把 APK / dex / so 拖进去
   - 按钮：**① 判定（只读体检）**、**② 解固（判定→路由→验证）**、
     **选黄金样本…**（可选，选了解固用 byte-exact 验证，不选明确提示 anchor-only）、
-    **③ 回归矩阵**
+    **选产物位置…**（可选，不选=默认与拖入文件同目录）、**③ 回归矩阵**
+  - **产物默认与拖入文件同路径**：`D:\samples\xxx.so` → `D:\samples\xxx_unpacked.so`
+    （APK 出 `_unpacked.dex`）；产物已存在时自动加 `_1/_2` 编号，**不静默覆盖**
   - 输出区实时显示 `[!]/[*]/[+]`（失败红 / 步骤灰 / 成功绿），与 CLI 输出一致
   - 长任务后台线程跑，界面不冻结
 - **CLI 子命令不变**：`unpacker.exe analyze|unpack|regression ...`（把文件拖到 exe 图标上则直接判定并回车退出）
@@ -34,7 +36,7 @@ python unpacker/build_exe.py        # PyInstaller 打包 -> unpacker/dist/unpack
 exe 的仓库定位（解固路由依赖三个 lab 的模块）：**exe 所在目录向上找** >
 `ANDROID_REVERSE_LABS` 环境变量 > `--repo <仓库根>` > exe 内置兜底副本（打包时把三个
 lab 的 `tools/*.py` 收进 exe；找不到仓库时判定/解固照常可用，但不保证与 lab 最新代码同步）。
-exe 单独分发时产物写在**被解固文件旁边**的 `unpacker_output/`，不写系统临时目录。
+exe 单独分发时产物默认写在**被解固文件同目录**（`<样本名>_unpacked.so/.dex`），不写系统临时目录。
 **exe 归属 unpacker/ 内部**：构建产物在 `unpacker/dist/unpacker.exe`，仓库根目录零残留。
 
 ## 定位（诚实声明）
@@ -92,5 +94,6 @@ PATH 没有才回退各 lab 自带的 `upx.exe`（4.2.4，lab 实测基线）。
 | `regression.py` | 全仓库混淆矩阵：19 样本 × 双向断言 + SO 检测器交叉验证；exit 0 = 全绿 |
 | `build_exe.py` | PyInstaller 打包脚本：单 exe + GUI + 三个 lab tools/ 内置兜底副本，产物收在 `unpacker/dist/` |
 
-产物目录：`unpacker_output/`（在被解固文件旁边，不污染样本目录）。
+产物默认与输入文件**同目录同名前缀**：`<样本名>_unpacked.so`（ELF）/ `<样本名>_unpacked.dex`（APK）；
+`-o <目录>` 或 GUI「选产物位置」可改到指定目录；产物已存在自动加 `_1/_2` 编号，不静默覆盖。
 输出约定：`[!]=失败/告警`、`[*]=步骤`、`[+]=成功`；每个结论都附认知边界提示。

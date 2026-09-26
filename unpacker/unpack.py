@@ -184,40 +184,86 @@ def verify_out(out, pristine, kind):
     return False
 
 
+# ---------------------------------------------------------------- 产物命名
+def default_out_path(path, kind):
+    """默认产物：与输入文件【同目录同名前缀】直出，一眼可见。
+
+    D:\\samples\\libtarget_360_variant.so -> D:\\samples\\libtarget_360_variant_unpacked.so
+    D:\\samples\\app_packed_v1.apk        -> D:\\samples\\app_packed_v1_unpacked.dex
+    """
+    stem = os.path.splitext(os.path.basename(path))[0]
+    ext = '.so' if kind == 'elf' else '.dex'
+    return os.path.join(os.path.dirname(os.path.abspath(path)), stem + '_unpacked' + ext)
+
+
+def unique_out_path(p):
+    """产物已存在时不静默覆盖：追加 _1/_2/… 找第一个空位。"""
+    if not os.path.exists(p):
+        return p
+    stem, ext = os.path.splitext(p)
+    for i in range(1, 1000):
+        cand = '%s_%d%s' % (stem, i, ext)
+        if not os.path.exists(cand):
+            return cand
+    raise FileExistsError('产物已存在且 999 个编号位全被占用: %s' % p)
+
+
 # ---------------------------------------------------------------- 主流程
 def route(res, path, outdir, pristine):
-    """按判定结论路由到解法。返回 (是否解固, 输出文件列表)。"""
-    v = res.get('verdict') or ''
-    os.makedirs(outdir, exist_ok=True)
-    outs = []
+    """按判定结论路由到解法。返回 (是否解固, 输出文件列表)。
 
-    if res.get('kind') == 'elf':
+    产物命名：outdir 显式给了（CLI -o / GUI 选择）则用 outdir/<样本名>_unpacked.<ext>；
+    否则默认与输入文件同目录同前缀（default_out_path）。
+    """
+    v = res.get('verdict') or ''
+    kind = res.get('kind')
+
+    def out_for(default_name):
+        """统一产物路径解析：显式目录用之 + 防覆盖；默认走同目录同名前缀。"""
+        if outdir:
+            os.makedirs(outdir, exist_ok=True)
+            p = os.path.join(outdir, default_name)
+        else:
+            p = default_out_path(path, kind)
+        return unique_out_path(p)
+
+    if kind == 'elf':
         if v.startswith('标准 360') or v.startswith('标准 UPX'):
-            out = os.path.join(outdir, 'unpacked.so')
+            out = out_for('unpacked.so')
             if unpack_so_std(path, out):
-                outs.append(out)
+                outs = [out]
+                return _finish(outs, pristine, kind)
+            return False, []
         elif v.startswith('★ 变种 360'):
-            out = os.path.join(outdir, 'unpacked.so')
+            out = out_for('unpacked.so')
             if unpack_so_variant(path, out, orig=pristine, lab='360jiagu'):
-                outs.append(out)
+                outs = [out]
+                return _finish(outs, pristine, kind)
+            return False, []
         elif v.startswith('★ 变种 UPX'):
-            out = os.path.join(outdir, 'unpacked.so')
+            out = out_for('unpacked.so')
             if unpack_so_variant(path, out, orig=pristine, lab='upx_practice'):
-                outs.append(out)
+                outs = [out]
+                return _finish(outs, pristine, kind)
+            return False, []
         else:
             print('[!] 判定为「%s」——静态不可自动解固。' % v)
             print('    下一步：B13/自实现 Linker 走内存 dump + ELF Fix；'
                   'SO VMP 须动态 trace（认知边界）。')
-            return False, outs
-    elif res.get('kind') in ('apk', 'dex'):
+            return False, []
+    elif kind in ('apk', 'dex'):
         if v.startswith('已加固：DEX 整体加密'):
-            out = os.path.join(outdir, 'unpacked_v1.dex')
+            out = out_for('unpacked_v1.dex')
             if unpack_ajiami_v1(path, out, pristine):
-                outs.append(out)
+                outs = [out]
+                return _finish(outs, pristine, kind)
+            return False, []
         elif v.startswith('已加固：类抽取'):
-            out = os.path.join(outdir, 'unpacked_v2.dex')
+            out = out_for('unpacked_v2.dex')
             if unpack_ajiami_v2(path, out, pristine):
-                outs.append(out)
+                outs = [out]
+                return _finish(outs, pristine, kind)
+            return False, []
         else:
             print('[!] 判定为「%s」——静态不可自动解固。' % v)
             if v.startswith('未见已知加固特征'):
@@ -225,14 +271,16 @@ def route(res, path, outdir, pristine):
                       '若怀疑未知加固，须动态 trace（认知边界）。')
             else:
                 print('    下一步：VMP 须定位解释器动态分析；SO 侧走 dump_fix.py。')
-            return False, outs
+            return False, []
     else:
         print('[!] 无法识别的文件类型，不解固。')
-        return False, outs
+        return False, []
 
+
+def _finish(outs, pristine, kind):
     if not outs:
         return False, outs
-    ok = all(verify_out(o, pristine, res.get('kind')) for o in outs)
+    ok = all(verify_out(o, pristine, kind) for o in outs)
     return ok, outs
 
 
@@ -248,7 +296,8 @@ def main_with_repo(argv, repo_root=None):
         description='统一解固工具 · 解固入口：判定 → 按壳种路由解法 → 两级验证')
     ap.add_argument('input', help='待解固文件（APK / so）')
     ap.add_argument('-o', '--outdir', default=None,
-                    help='产物目录（默认 unpacker_output/<文件名>/）')
+                    help='产物目录（不指定=默认与输入文件同目录，'
+                         '文件名 <样本名>_unpacked.so/.dex；已存在则自动加 _1/_2 编号，不覆盖）')
     ap.add_argument('--pristine', default=None,
                     help='黄金对照样本（给了就做 byte-exact 验证，不给只做 anchor-only）')
     ap.add_argument('--repo', default=None,
@@ -262,11 +311,9 @@ def main_with_repo(argv, repo_root=None):
     if not os.path.exists(path):
         print('[!] 不存在: %s（也试过仓库根下的 %s）' % (args.input, cand_repo))
         return 1
-    # 产物目录：默认放【被解固文件旁边】的 unpacker_output/（exe 单独分发场景
-    # 不能往 _MEIxxxx 临时解包目录写——进程退出即消失）；-o 显式指定则尊重用户。
-    outdir = args.outdir or os.path.join(
-        os.path.dirname(os.path.abspath(path)), 'unpacker_output',
-        os.path.splitext(os.path.basename(path))[0])
+    # 产物位置：不指定 -o 时【不集中到任何目录】——由 route() 的 default_out_path
+    # 直接落在输入文件同目录（<样本名>_unpacked.so/.dex）；-o 显式指定则收集到该目录。
+    outdir = args.outdir
     if args.pristine:
         pc = (args.pristine if os.path.isabs(args.pristine)
               else os.path.abspath(args.pristine))
@@ -277,13 +324,14 @@ def main_with_repo(argv, repo_root=None):
     print('[*] ① 判定（只读体检）...')
     res = analyze(path)
     print('    判定结论: %s' % res.get('verdict'))
-    print('[*] ② 按壳种路由解法，产物目录: %s' % outdir)
+    print('[*] ② 按壳种路由解法。产物%s' % (
+        '目录: %s' % outdir if outdir else '默认与输入文件同目录（<样本名>_unpacked.*）'))
     ok, outs = route(res, path, outdir, pristine)
     if not outs:
         return 1
     print('[*] ③ 完成。产物:')
     for o in outs:
-        print('    %s (%d bytes)' % (o, os.path.getsize(o)))
+        print('    %s (%d bytes)' % (os.path.abspath(o), os.path.getsize(o)))
     print('[%s] 解固%s（验证等级: %s）' % (
         '+' if ok else '!', '成功' if ok else '失败',
         'byte-exact' if pristine else 'anchor-only'))
