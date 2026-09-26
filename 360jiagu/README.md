@@ -1,4 +1,4 @@
-# 360 加固（native 层）· 练习工程（完整手册）
+# 加固（native 层）· 练习工程（完整手册）
 
 > 工程根目录：`360jiagu`（本 README 所在目录；下文所有命令都在此执行）
 > **这是本工程唯一的文档**：原理 / 判定 / 解法 / 踩坑 / 命令 / 练习回归全在这里，分级阅读。
@@ -12,9 +12,9 @@
 
 ---
 
-## 0. 快速上手
+## 快速上手
 
-### 0.1 三分钟跑一遍
+### 三分钟跑一遍
 
 ```bash
 cd 360jiagu
@@ -40,7 +40,7 @@ python tools/reset_lab.py restore
 `--verify` 会把每个"疑似被篡改的 4 字节 token"打补丁后跑一次 `upx -t` **实证**（静态候选必有巧合项）；
 `solve_360.py` 则是解法 A 的完整自动化：定位 token → 全部还原为 `UPX!` → `upx -d` → 锚点校验 → 与黄金样本逐字节比对。
 
-### 0.2 三个关键样本
+### 三个关键样本
 
 | 文件 | 大小 | e_type | `UPX!` | `JG!!` | `360 4.24` | `upx -d` | 用途 |
 |---|---|---|---|---|---|---|---|
@@ -49,7 +49,7 @@ python tools/reset_lab.py restore
 | `libtarget_360_variant.so` | 17916 | ET_EXEC(2) | 0 | **4** | 有（文件内明文） | **FAIL** | 变种 360：需手工/动态脱壳 |
 | `libtarget_stripped.so` | 43888 | ET_DYN(3) | 0 | 0 | 无 | — | **B13 正样本**：节头表被剥离，触发「疑似 SO 加壳 / 自实现 Linker」 |
 
-> **重要前提**：官方 UPX 4.2.4 **不能直接打包 Android 的 `ET_DYN` `.so`**（见 §7.1）。
+> **重要前提**：官方 UPX 4.2.4 **不能直接打包 Android 的 `ET_DYN` `.so`**（见「踩坑结论汇总」节）。
 > 本工程标准/变种样本以 `linux/arm ET_EXEC` 形式打包——**脱壳机制完全相同**（同样的 Stub、
 > 解压缓冲、OEP 概念），仅 `e_type` 字段不同。原始 `.so` 仍是货真价实的 ARM32 Android `ET_DYN`。
 
@@ -61,9 +61,9 @@ python tools/reset_lab.py restore
 
 ---
 
-## 1. 原理：360 native 层 = 改版 UPX
+## 原理：360 native 层 = 改版 UPX
 
-### 1.1 加壳前后结构
+### 加壳前后结构
 
 ```
 正常 .so                     360 加固后（改版 UPX）
@@ -74,7 +74,7 @@ ELF                           ELF
 ├── .dynamic
 ```
 
-### 1.2 运行时流程（**分析的关键在这里**）
+### 运行时流程（**分析的关键在这里**）
 
 ```
 加载 SO → 进入 Stub → 初始化 → 解压原始内容 → 恢复代码/数据 → 跳到 OEP → 真实 Native 代码
@@ -83,14 +83,14 @@ ELF                           ELF
 > 核心：360/UPX 是「运行过程中恢复原始程序并继续执行」，
 > 所以**运行时内存状态是分析变种 360 的关键依据**。
 
-### 1.3 Android 完整链路
+### Android 完整链路
 
 ```
 System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解压
    → 原始 Native 代码 → JNI_OnLoad → RegisterNatives → 业务代码
 ```
 
-### 1.4 本工程的两种 360 状态（建模）
+### 本工程的两种 360 状态（建模）
 
 ```
 标准 360  = UPX 打包 + UPX! 保留 + 明文 "360 4.24" 标记   → upx -d 可解（可恢复配置）
@@ -99,11 +99,11 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 
 > **关键认知**：360 native 层在「标准/可恢复」配置下，文件结构与标准 UPX **字节级无区别**
 > （除了 payload 内容）。真正区分「标准 360 vs 变种 360」的是**魔数是否被改写**；
-> 真正区分「是否加壳」的永远是**结构特征**（§2），不是文件名或某个字符串。
+> 真正区分「是否加壳」的永远是**结构特征**（见「判定」节），不是文件名或某个字符串。
 
 ---
 
-## 2. 脱壳步骤法与 OEP
+## 脱壳步骤法与 OEP
 
 ```
 ① 判断文件类型      ② 分析 ELF          ③ 判断 360 特征    ④ 尝试 upx -t / -d
@@ -112,7 +112,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 ⑬ IDA/Ghidra 重分析  ⑭ JNI_OnLoad / RegisterNatives → 继续分析
 ```
 
-### 2.1 Entry vs OEP
+### Entry vs OEP
 
 | 概念 | 含义 |
 |---|---|
@@ -127,7 +127,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 出现正常函数结构 / 出现原始 `.text` / 开始访问原始 `.rodata` /
 出现 `JNI_OnLoad`·`RegisterNatives`·正常调用关系。
 
-### 2.2 核心警示：不要只依赖 `UPX!` 字符串
+### 核心警示：不要只依赖 `UPX!` 字符串
 
 > ❌ 搜索 `UPX!` → 找 Stub → 固定地址找 OEP（对魔改样本不可靠）
 > ✅ **不是「有没有 UPX 字符串」，而是「运行过程中原始代码在哪里被恢复并开始执行」**
@@ -137,9 +137,9 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 
 ---
 
-## 3. 判定：不看文件名，只看结构特征（实测值）
+## 判定：不看文件名，只看结构特征（实测值）
 
-### 3.1 特征对照表（本工程实跑）
+### 特征对照表（本工程实跑）
 
 | 特征 | 未加壳 orig | 标准 360 | 变种 360 | 原理 |
 |---|---|---|---|---|
@@ -161,7 +161,7 @@ python tools/detect_360.py <file> [--brief] [--verify]
 - 「是否 360」由两路明文标记确认（变种魔数 `JG!!` / `360jiagu` / `360 4.24`），**仅用于命名**，
   不改变「是否加壳」的判定（避免被 payload 里的 360 标记误判成「已加壳」）。
 
-### 3.2 标准 360 样本判定（实跑输出，节选）
+### 标准 360 样本判定（实跑输出，节选）
 
 ```
 目标: libtarget_360.so   (17916 bytes)
@@ -177,7 +177,7 @@ python tools/detect_360.py <file> [--brief] [--verify]
 判定结果: 标准 360 加固（改版 UPX，UPX! 保留，可自动解包）
 ```
 
-### 3.3 变种 360 样本判定（实跑输出，节选）
+### 变种 360 样本判定（实跑输出，节选）
 
 ```
 目标: libtarget_360_variant.so   (17916 bytes)
@@ -193,14 +193,14 @@ python tools/detect_360.py <file> [--brief] [--verify]
 判定结果: ★ 变种 360 加固（UPX! 被 360 改写，结构仍在）
 ```
 
-### 3.4 阈值设计踩过的坑（重要）
+### 阈值设计踩过的坑（重要）
 
 | 坑 | 现象 | 修正 |
 |---|---|---|
 | 解压缓冲段不加下限 | 普通 `.bss`（0xEC→0x9E0）被误判成 UPX 解压区 | 要求 `memsz ≥ 32KB` |
 | 魔数候选排除「4 字节全同」 | 真实占位符 `XXXX` 被自己误杀 | 只排除 `00`/`FF` 纯填充 |
 | 只用静态候选 | 出现 `\x00\x00p\xab` 这类巧合项 | 必须 `--verify` 打补丁跑 `upx -t` 实证 |
-| 原始 .so 太小 | UPX 报 `NotCompressibleException` | 加策略表体积（§7.2），让 UPX 有净收益 |
+| 原始 .so 太小 | UPX 报 `NotCompressibleException` | 加策略表体积（见「踩坑结论汇总」节），让 UPX 有净收益 |
 
 ```bash
 python tools/detect_360.py libtarget_360_variant.so --verify
@@ -211,11 +211,11 @@ python tools/detect_360.py libtarget_360_variant.so --verify
 
 ---
 
-## 4. 解法 A：手工修复特征 → 官方解包
+## 解法 A：手工修复特征 → 官方解包
 
 **适用**：变种只抹特征，Stub 与控制流未动。（脚本 `solve_360.py` 只是这些步骤的自动化）
 
-### 4.1 脚本跑通（先给正确答案）
+### 脚本跑通（先给正确答案）
 
 ```bash
 python tools/solve_360.py libtarget_360_variant.so unpacked.so --orig libtarget_orig.so
@@ -247,7 +247,7 @@ python tools/solve_360.py libtarget_360_variant.so unpacked.so --orig libtarget_
 **逐行判读**：脚本扫描 4 字节重复 token → 逐个打补丁用 `upx -t` 实证 → `JG!!` 通过即真魔数
 → 全部还原为 `UPX!` → `upx -d` 解出 43888 字节 → 8 个锚点全部找回 → 与原始 `.so` **除 `e_type` 外 0 字节差异**。
 
-### 4.2 手动复现（自己看字节定位）
+### 手动复现（自己看字节定位）
 
 检测已给出 4 个偏移：`0x98 / 0x3cfb / 0x45cf / 0x45d8`，各把 `JG!!` 改回 `UPX!`。
 
@@ -266,7 +266,7 @@ open('fixed.so','wb').write(d)"
 ./upx.exe -t fixed.so && ./upx.exe -d fixed.so -o unpacked.so
 ```
 
-### 4.3 ⚠️ 必须 4 处全改（本题核心）
+### ⚠️ 必须 4 处全改（本题核心）
 
 | 操作 | `upx -t` |
 |---|---|
@@ -275,7 +275,7 @@ open('fixed.so','wb').write(d)"
 
 **原因**：UPX/360 校验和覆盖所有内嵌魔数，只修一处其余仍让校验失败（报 `not packed by UPX`）。
 
-### 4.4 三条验证判据
+### 三条验证判据
 
 1. **体积恢复**：`unpacked.so = 43888` == `libtarget_orig.so = 43888`
 2. **锚点找回**：`360jiagu_lab_payload_marker_v1`、`JiaguLab-2026-SECRET-KEY`、
@@ -286,23 +286,23 @@ open('fixed.so','wb').write(d)"
 
 IDA 打开应看到调用链：`JNI_OnLoad → RegisterNatives → getFlag → check_license`
 
-### 4.5 何时失效
+### 何时失效
 
 若 4 处全改后 `upx -t` 仍失败 → 说明不止改了特征（Stub/控制流/压缩参数被改）→ **转解法 B**。
 
 ---
 
-## 5. 解法 B：内存 Dump + ELF Fix（通用）
+## 解法 B：内存 Dump + ELF Fix（通用）
 
 **这是真实对抗的主力路线**，完全不依赖 360 的特征与校验和。
 
-### 5.1 思路
+### 思路
 
 ```
 让程序跑起来 → 等 Stub 解压完 → dump 进程内存 → 重建 ELF → 载入 IDA
 ```
 
-### 5.2 真机 Frida 步骤
+### 真机 Frida 步骤
 
 把 `.so` 放进 APK 的 `lib/armeabi-v7a/`，安装运行，Frida 附加：
 
@@ -327,7 +327,7 @@ const t = setInterval(() => {
 - 最稳时机：hook `libart.so` 的 `RegisterNatives` 被调用后，或 `JNI_OnLoad` 返回后
 - 导出表没 `JNI_OnLoad`（被壳隐藏）时，改用 linker 映射完 PT_LOAD / 执行 init_array 时 dump
 
-### 5.3 本工程演练（无真机也能跑通）
+### 本工程演练（无真机也能跑通）
 
 ```bash
 python tools/simulate_dump.py libtarget_orig.so analysis_output/sim_dump.bin
@@ -346,13 +346,13 @@ python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_f
 
 真机用法：`dump_fix.py <dump.bin> <模块基址> <out.so> --arch arm [--entry-rva HEX]`
 
-### 5.4 OEP 定位
+### OEP 定位
 
 Stub 解压完跳转回原始入口。观察 PC 何时离开 stub 段（本例 stub 在 `vaddr=0xE000`），
 进入第一个 PT_LOAD（`0x0` 起，即解压出的原始代码区）。
 实用替代：在 `RegisterNatives` / `JNI_OnLoad` 下断或 hook —— 被调用即已在真实代码里。
 
-### 5.5 Dump ≠ 完成脱壳
+### Dump ≠ 完成脱壳
 
 内存里的 ELF 缺节区表/符号，需 ELF Fix（重建 Section Header）：
 
@@ -365,7 +365,7 @@ Dump → ELF Fix → Section Header 重建 → 载入 IDA
 
 ---
 
-## 6. 决策流程
+## 决策流程
 
 ```
 拿到 .so
@@ -380,9 +380,9 @@ Dump → ELF Fix → Section Header 重建 → 载入 IDA
 
 ---
 
-## 7. 踩坑结论汇总
+## 踩坑结论汇总
 
-### 7.1 官方 UPX 不能直接打包 Android `ET_DYN` `.so`
+### 官方 UPX 不能直接打包 Android `ET_DYN` `.so`
 
 | 尝试 | 结果 |
 |---|---|
@@ -392,7 +392,7 @@ Dump → ELF Fix → Section Header 重建 → 载入 IDA
 
 > 注：本工程标准/变种样本是 `ET_EXEC`，仅为让 UPX 能打包；脱壳机制与真实 ET_DYN 完全一致。
 
-### 7.2 原始 .so 太小 → UPX 拒绝压缩
+### 原始 .so 太小 → UPX 拒绝压缩
 
 UPX 自带 ~3.5KB stub，原始 `.so` 太小（如 4.5KB）时「压缩后 + stub」≥ 原文件，
 触发 `NotCompressibleException`。
@@ -400,16 +400,16 @@ UPX 自带 ~3.5KB stub，原始 `.so` 太小（如 4.5KB）时「压缩后 + stu
 **解决**：`build/gen_policy.py` 生成 `src/policy_inc.h`（1000 条策略/签名表，约 42KB 文本），
 让原始 `.so` 达到 ~44KB，UPX 稳定打包（17916 字节）。`policy_inc.h` 同时是脱壳后的真实数据锚点。
 
-### 7.3 校验和覆盖全部内嵌魔数
+### 校验和覆盖全部内嵌魔数
 
-见 §4.3 —— 只改一处必失败。变种 360 的 `JG!!` 出现在 4 处（stub 2 + 尾部 2），
+见 「为什么必须全部还原」节 —— 只改一处必失败。变种 360 的 `JG!!` 出现在 4 处（stub 2 + 尾部 2），
 必须全部还原为 `UPX!`。
 
-### 7.4 静态候选必有巧合项
+### 静态候选必有巧合项
 
-见 §3.4 —— 用 `--verify` 实证。`JG!!` 通过 `upx -t`，其余 `\x00\x00p\xab` 等均为巧合。
+见 「实证真魔数」节 —— 用 `--verify` 实证。`JG!!` 通过 `upx -t`，其余 `\x00\x00p\xab` 等均为巧合。
 
-### 7.5 360 明文标记可安全注入
+### 360 明文标记可安全注入
 
 把 stub 版本串 `UPX 4.24` 改为 `360 4.24`（同长度 8 字节）后 `upx -t` 仍通过，
 标准/变种样本因此携带明文 `360 4.24` 标记（**这是本 lab 的建模标记，真实 360 未必有此串**）。
@@ -417,7 +417,7 @@ UPX 自带 ~3.5KB stub，原始 `.so` 太小（如 4.5KB）时「压缩后 + stu
 
 ---
 
-## 8. 反复练习：备份与一键回归
+## 反复练习：备份与一键回归
 
 原始样本已备份到 `pristine/`（含 sha256 清单）：
 
@@ -437,7 +437,7 @@ python tools/reset_lab.py backup     # 改过源码后刷新基线
 
 ---
 
-## 9. 命令速查
+## 命令速查
 
 ```bash
 # 判定
@@ -475,7 +475,7 @@ python tools/reset_lab.py restore
 
 ---
 
-## 10. 文件索引
+## 文件索引
 
 ```
 360jiagu/
@@ -513,7 +513,7 @@ python tools/reset_lab.py restore
 
 ---
 
-## 11. 一句话记住
+## 一句话记住
 
 > **判断 360 不靠字符串，靠「运行时原始代码在哪里恢复并开始执行」。**
 > 标准 360 用 `upx -d`；只抹魔数用**特征修复（必须全部还原）**；Stub 被改就**内存 dump + ELF Fix**。

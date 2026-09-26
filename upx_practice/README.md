@@ -6,9 +6,9 @@
 
 ---
 
-## 0. 快速上手
+## 快速上手
 
-### 0.1 三分钟跑一遍
+### 三分钟跑一遍
 
 ```bash
 cd upx_practice
@@ -34,9 +34,9 @@ python tools/reset_lab.py restore
 **三条命令分别干什么**：`detect_packer.py` 只做**结构体检**（不修改文件），看 F1–F7 哪几条被点亮；
 `--verify` 会把每个"疑似被篡改的 4 字节 token"打补丁后跑一次 `upx -t` **实证**（静态候选必有巧合项）；
 `solve_variant.py` 是解法 A 的完整自动化：定位 token → 全部还原为 `UPX!` → `upx -d` → 锚点校验 → 与黄金样本逐字节比对。
-`upx.exe` 的定位顺序是 `--upx > 环境变量 UPX > 工程根 upx.exe > PATH`（见 §9）。
+`upx.exe` 的定位顺序是 `--upx > 环境变量 UPX > 工程根 upx.exe > PATH`（见 「命令速查」）。
 
-### 0.2 三个关键样本
+### 三个关键样本
 
 | 文件 | 大小 | e_type | `UPX!` | `upx -t` | 用途 |
 |---|---|---|---|---|---|
@@ -45,7 +45,7 @@ python tools/reset_lab.py restore
 | `libtarget_upx_variant.so` | 5348 | ET_EXEC | **0** | **FAIL** | 变种壳，需手工/动态 |
 | `libtarget_stripped.so` | 70012 | ET_DYN | 0 | — | **B13 正样本**：节头表被剥离，触发「疑似 SO 加壳 / 自实现 Linker」 |
 
-> **重要前提**：官方 UPX 4.2.4 **不能直接打包 Android 的 `ET_DYN` `.so`**（见 §7.1）。
+> **重要前提**：官方 UPX 4.2.4 **不能直接打包 Android 的 `ET_DYN` `.so`**（见「踩坑结论汇总」节）。
 > 本工程标准样本以 `linux/arm ET_EXEC` 形式打包——**脱壳机制完全相同**（同样的 Stub、
 > UPX0 段、OEP 概念），仅 `e_type` 字段不同。原始 `.so` 仍是货真价实的 ARM32 Android `ET_DYN`。
 
@@ -57,9 +57,9 @@ python tools/reset_lab.py restore
 
 ---
 
-## 1. 原理：UPX 与变种
+## 原理：UPX 与变种
 
-### 1.1 加壳前后结构
+### 加壳前后结构
 
 ```
 正常 .so                      UPX 加壳后
@@ -70,7 +70,7 @@ ELF                           ELF
 ├── .dynamic
 ```
 
-### 1.2 运行时流程（**分析的关键在这里**）
+### 运行时流程（**分析的关键在这里**）
 
 ```
 加载 SO → 进入 Stub → 初始化 → 解压原始内容 → 恢复代码/数据 → 跳到 OEP → 真实 Native 代码
@@ -79,14 +79,14 @@ ELF                           ELF
 > 核心：UPX 是"运行过程中恢复原始程序并继续执行"，
 > 所以**运行时内存状态是分析变种 UPX 的关键依据**。
 
-### 1.3 Android 完整链路
+### Android 完整链路
 
 ```
 System.loadLibrary → linker → 映射 PT_LOAD → UPX Stub → 运行时解压
    → 原始 Native 代码 → JNI_OnLoad → RegisterNatives → 业务代码
 ```
 
-### 1.4 什么是变种 UPX
+### 什么是变种 UPX
 
 不是官方壳，而是以 UPX 为基础修改 Stub / 文件结构 / 特征 / 流程后的样本：
 
@@ -96,7 +96,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → UPX Stub → 运行时解�
 
 ---
 
-## 2. 脱壳 14 步法与 OEP
+## 脱壳 14 步法与 OEP
 
 ```
 ① 判断文件类型      ② 分析 ELF          ③ 判断 UPX 特征     ④ 尝试 upx -t / -d
@@ -105,7 +105,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → UPX Stub → 运行时解�
 ⑬ IDA/Ghidra 重分析  ⑭ JNI_OnLoad / RegisterNatives → 继续分析
 ```
 
-### 2.1 Entry vs OEP
+### Entry vs OEP
 
 | 概念 | 含义 |
 |---|---|
@@ -120,7 +120,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → UPX Stub → 运行时解�
 出现正常函数结构 / 出现原始 `.text` / 开始访问原始 `.rodata` /
 出现 `JNI_OnLoad`·`RegisterNatives`·正常调用关系。
 
-### 2.2 核心警示：不要只依赖 UPX 字符串
+### 核心警示：不要只依赖 UPX 字符串
 
 > ❌ 搜索 `UPX!` → 找 Stub → 固定地址找 OEP（对魔改样本不可靠）
 > ✅ **不是"有没有 UPX 字符串"，而是"运行过程中原始代码在哪里被恢复并开始执行"**
@@ -130,9 +130,9 @@ System.loadLibrary → linker → 映射 PT_LOAD → UPX Stub → 运行时解�
 
 ---
 
-## 3. 判定：不看文件名，只看结构特征
+## 判定：不看文件名，只看结构特征
 
-### 3.1 特征对照（本工程实测）
+### 特征对照（本工程实测）
 
 | 特征 | 未加壳 | UPX 加壳 | 原理 |
 |---|---|---|---|
@@ -150,7 +150,7 @@ python tools/detect_packer.py <file> [--brief] [--verify]
 
 判定：标准 = 有 `UPX!` 且分数高；**变种 = 搜不到 `UPX!` 但加壳特征全在**。
 
-### 3.2 阈值设计踩过的坑（重要）
+### 阈值设计踩过的坑（重要）
 
 | 坑 | 现象 | 修正 |
 |---|---|---|
@@ -166,11 +166,11 @@ python tools/detect_packer.py libtarget_upx_variant.so --verify
 
 ---
 
-## 4. 解法 A：修复特征 → 官方解包（脚本在前，手动在后）
+## 解法 A：修复特征 → 官方解包（脚本在前，手动在后）
 
-**适用**：变种只抹特征，Stub 与控制流未动。（§4.2 起的手动步骤 = §4.1 脚本所做之事的展开）
+**适用**：变种只抹特征，Stub 与控制流未动。（「手动复现」节 起的手动步骤 = 「脚本跑通」节 脚本所做之事的展开）
 
-### 4.1 脚本跑通（先拿到正确答案）
+### 脚本跑通（先拿到正确答案）
 
 ```bash
 python tools/solve_variant.py libtarget_upx_variant.so analysis_output/solve_unpacked.so --orig libtarget_orig.so
@@ -203,11 +203,11 @@ python tools/solve_variant.py libtarget_upx_variant.so analysis_output/solve_unp
 ```
 
 **逐行判读**：
-- 脚本枚举"重复出现的 4 字节 token"当候选 → 逐个打补丁用 `upx -t` **实证** → `XXXX` 通过即真魔数（静态候选必有巧合项，必须实证，见 §3.2）。
+- 脚本枚举"重复出现的 4 字节 token"当候选 → 逐个打补丁用 `upx -t` **实证** → `XXXX` 通过即真魔数（静态候选必有巧合项，必须实证，见 「阈值设计踩过的坑」节）。
 - `使用的 upx` 一行：upx 由 `--upx > 环境变量 UPX > 工程根 upx.exe > PATH` 定位；日志只显示文件名，**不落绝对路径**。
-- 解包产物 70012 == 原始 SO、除 `e_type` 外 0 字节差异 → 脱壳成功（三条判据见 §4.6）。
+- 解包产物 70012 == 原始 SO、除 `e_type` 外 0 字节差异 → 脱壳成功（三条判据见 「判据」节）。
 
-### 4.2 自己看字节定位（hexdump 对照）
+### 自己看字节定位（hexdump 对照）
 
 stub 区：
 ```
@@ -231,7 +231,7 @@ xxd -s 0x14a0 -l 68 libtarget_upx.so
 
 尾部 `0x0001117C = 70012`（远大于文件 5348）→ 证明被压缩过。变种同样位置为 `5858 5858`。
 
-### 4.3 被篡改的 4 处偏移
+### 被篡改的 4 处偏移
 
 | 偏移 | 区域 | 标准字节 | 变种字节 |
 |---|---|---|---|
@@ -240,7 +240,7 @@ xxd -s 0x14a0 -l 68 libtarget_upx.so
 | `0x14B8` | 尾部结构 | `55 50 58 21` | `58 58 58 58` |
 | `0x14C0` | 尾部结构 | `55 50 58 21` | `58 58 58 58` |
 
-### 4.4 手改方法
+### 手改方法
 
 **十六进制编辑器**（HxD / 010 Editor / ImHex）：跳到上述 4 个偏移，各改成 `55 50 58 21`，另存 `fixed.so`。
 
@@ -254,7 +254,7 @@ open('fixed.so','wb').write(d)"
 python -c "open('fixed.so','wb').write(open('libtarget_upx_variant.so','rb').read().replace(b'XXXX',b'UPX!'))"
 ```
 
-### 4.5 ⚠️ 必须 4 处全改（本题核心）
+### ⚠️ 必须 4 处全改（本题核心）
 
 | 操作 | `upx -t` |
 |---|---|
@@ -263,7 +263,7 @@ python -c "open('fixed.so','wb').write(open('libtarget_upx_variant.so','rb').rea
 
 **原因**：UPX 内部校验和覆盖所有内嵌魔数，只修一处其余仍让校验失败（报 `not packed by UPX`）。
 
-### 4.6 解包与三条验证判据
+### 解包与三条验证判据
 
 ```bash
 ./upx.exe -t fixed.so && ./upx.exe -d fixed.so -o unpacked.so
@@ -277,23 +277,23 @@ python -c "open('fixed.so','wb').write(open('libtarget_upx_variant.so','rb').rea
 
 IDA 打开应看到调用链：`JNI_OnLoad → RegisterNatives → getFlag → check_license`
 
-### 4.7 何时失效
+### 何时失效
 
 若 4 处全改后 `upx -t` 仍失败 → 说明不止改了特征（Stub/控制流/压缩参数被改）→ **转解法 B**。
 
 ---
 
-## 5. 解法 B：内存 Dump + ELF Fix（通用）
+## 解法 B：内存 Dump + ELF Fix（通用）
 
 **这是真实对抗的主力路线**，完全不依赖 UPX 的特征与校验和。
 
-### 5.1 思路
+### 思路
 
 ```
 让程序跑起来 → 等 Stub 解压完 → dump 进程内存 → 重建 ELF → 载入 IDA
 ```
 
-### 5.2 真机 Frida 步骤
+### 真机 Frida 步骤
 
 把 `.so` 放进 APK 的 `lib/armeabi-v7a/`，安装运行，Frida 附加：
 
@@ -318,7 +318,7 @@ const t = setInterval(() => {
 - 最稳时机：hook `libart.so` 的 `RegisterNatives` 被调用后，或 `JNI_OnLoad` 返回后
 - 导出表没 `JNI_OnLoad`（被壳隐藏）时，改用 linker 映射完 PT_LOAD / 执行 init_array 时 dump
 
-### 5.3 本工程演练（无真机也能跑通）
+### 本工程演练（无真机也能跑通）
 
 ```bash
 python tools/simulate_dump.py libtarget_orig.so analysis_output/sim_dump.bin
@@ -328,13 +328,13 @@ python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_f
 
 真机用法：`dump_fix.py <dump.bin> <模块基址> <out.so> --arch arm [--entry-rva HEX]`
 
-### 5.4 OEP 定位
+### OEP 定位
 
 Stub 解压完跳转回原始入口。观察 PC 何时离开 stub 段（本例 stub 在 `vaddr=0x13000`），
 进入第一个 PT_LOAD（`0x0` 起，即解压出的原始代码区）。
 实用替代：在 `RegisterNatives` / `JNI_OnLoad` 下断或 hook —— 被调用即已在真实代码里。
 
-### 5.5 Dump ≠ 完成脱壳
+### Dump ≠ 完成脱壳
 
 内存里的 ELF 缺节区表/符号，需 ELF Fix（重建 Section Header）：
 
@@ -347,7 +347,7 @@ Dump → ELF Fix → Section Header 重建 → 载入 IDA
 
 ---
 
-## 6. 决策流程
+## 决策流程
 
 ```
 拿到 .so
@@ -362,9 +362,9 @@ Dump → ELF Fix → Section Header 重建 → 载入 IDA
 
 ---
 
-## 7. 踩坑结论汇总
+## 踩坑结论汇总
 
-### 7.1 官方 UPX 不能直接打包 Android `ET_DYN` `.so`
+### 官方 UPX 不能直接打包 Android `ET_DYN` `.so`
 
 | 尝试 | 结果 |
 |---|---|
@@ -376,17 +376,17 @@ Dump → ELF Fix → Section Header 重建 → 载入 IDA
 
 > 另注：UPX 4.2.4 已移除 `--android-shlib`，但仍会提示该选项（过时提示，别被误导）。
 
-### 7.2 校验和覆盖全部内嵌魔数
+### 校验和覆盖全部内嵌魔数
 
-见 §4.5 —— 只改一处必失败。
+见 「手动复现」节 —— 只改一处必失败。
 
-### 7.3 静态候选必有巧合项
+### 静态候选必有巧合项
 
-见 §3.2 —— 用 `--verify` 实证。
+见 「阈值设计踩过的坑」节 —— 用 `--verify` 实证。
 
 ---
 
-## 8. 反复练习：备份与一键回归
+## 反复练习：备份与一键回归
 
 原始样本已备份到 `pristine/`（含 sha256 清单）：
 
@@ -406,7 +406,7 @@ python tools/reset_lab.py backup     # 改过源码后刷新基线
 
 ---
 
-## 9. 命令速查
+## 命令速查
 
 ```bash
 # 判定
@@ -445,7 +445,7 @@ python tools/check_so_samples.py        # B13 双向断言：stripped 必触发 
 
 ---
 
-## 10. 文件索引
+## 文件索引
 
 ```
 upx_practice/
@@ -479,7 +479,7 @@ upx_practice/
 
 ---
 
-## 11. 一句话记住
+## 一句话记住
 
 > **判断 UPX 不靠字符串，靠"运行时原始代码在哪里恢复并开始执行"。**
 > 标准壳用 `upx -d`；只抹特征用**特征修复（必须全部还原）**；Stub 被改就**内存 dump + ELF Fix**。

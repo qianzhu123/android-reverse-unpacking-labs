@@ -9,6 +9,7 @@ apkutil.py — APK(zip) 层的通用操作 + 熵计算。
   add-file  <apk> <zip内路径> <本地文件> <out.apk>
   entries   <apk>                            列出 ZIP 条目（大小/CRC/压缩方式）
   entropy   <file>                           计算香农熵
+  entropy   <apk> <zip内的文件名>            计算 APK 内某成员的熵（免解包）
 """
 
 import os
@@ -117,9 +118,17 @@ def main():
             print('%-50s %10d %10d  %s' % (name, size, csize,
                                            'DEFLATE' if ct == zipfile.ZIP_DEFLATED else 'STORE'))
     elif cmd == 'entropy':
-        with open(sys.argv[2], 'rb') as f:
-            d = f.read()
-        print('%.4f bit/byte  (%d bytes)' % (shannon_entropy(d), len(d)))
+        path = sys.argv[2]
+        if path.lower().endswith(('.apk', '.zip', '.jar')) and len(sys.argv) > 3:
+            # APK(zip) 内成员：entropy <apk> <zip内的文件名>
+            member = sys.argv[3]
+            with zipfile.ZipFile(path) as z:
+                d = z.read(member)
+            print('%s  %.4f bit/byte  (%d bytes)' % (member, shannon_entropy(d), len(d)))
+        else:
+            with open(path, 'rb') as f:
+                d = f.read()
+            print('%.4f bit/byte  (%d bytes)' % (shannon_entropy(d), len(d)))
     else:
         print(__doc__)
         return 1
