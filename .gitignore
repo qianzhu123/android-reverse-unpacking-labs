@@ -6,6 +6,7 @@
 
 # ---- Generated outputs (never commit) ----
 analysis_output/
+unpacker_output/
 logs/
 __pycache__/
 *.pyc

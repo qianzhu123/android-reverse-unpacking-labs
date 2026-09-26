@@ -1,0 +1,63 @@
+# unpacker — 统一解固工具（判定 / 路由解固 / 跨工程回归）
+
+> 独立工具，聚合三个练习工程（`360jiagu` / `upx_practice` / `ajiami`）的检测器与解壳器。
+> **只读复用**：`labs.py` 通过 `sys.path` 注入 + 按文件路径加载各 lab 的模块，
+> 不复制、不修改任何练习工程的代码；本工具的失败会反过来暴露 lab 接口变更
+> （跨工程回归即为此兜底）。
+
+## 定位（诚实声明）
+
+「针对本仓库已建模壳种的统一判定 + 解固器」，**不是**万能脱壳器：
+对已知壳种给出准确分类与自动解固（有黄金样本时可逐字节验证）；
+对未知输入按仓库纪律降级——`疑似`（须动态 trace）或 `未见已知加固特征（≠未加固）`，
+绝不假装能脱、绝不输出"未加固"的全称否定结论。
+
+## 快速上手
+
+```bash
+# 从仓库根执行（相对路径按仓库根解析）
+
+# ① 判定：拖入任意 APK / dex / so，只读体检，不修改文件
+python unpacker/analyzer.py 360jiagu/libtarget_360_variant.so
+#   => 类型 elf | [360 检测器] 得分=16 | [UPX 检测器] 得分=16 | 统一结论: ★ 变种 360 加固…
+
+# ② 解固：判定 → 按壳种路由 → 两级验证（byte-exact / anchor-only）
+python unpacker/unpack.py 360jiagu/libtarget_360_variant.so --pristine 360jiagu/libtarget_orig.so
+#   => 魔数还原(JG!!→UPX! ×4) → upx -d → 8 锚点找回 → 除 e_type 外 0 字节差异 => 解固成功
+
+# ③ 回归：全仓库混淆矩阵（正向防漏报 / 负向防误报 / 检测器交叉防分歧）
+python unpacker/regression.py
+#   => 19/19 通过, 交叉 4/4 通过
+```
+
+## 路由表（判定结论 → 解法 → 验证）
+
+| 判定结论 | 解法 | 来源 lab | 验证 |
+|---|---|---|---|
+| 标准 UPX / 360 壳（SO） | `upx -d` 直接解 | 通用 | e_type 外逐字节 |
+| ★ 变种 360 壳 | 候选 token `upx -t` 实证 → 全部还原 → `-d` | `solve_360.py` | 同上 + 锚点 |
+| ★ 变种 UPX 壳 | 同上 | `solve_variant.py` | 同上 + 锚点 |
+| 已加固：DEX 整体加密（一代） | payload 解密还原 dex | `unpack_v1.py` | sha256 / 锚点 |
+| 已加固：类抽取（二/三代） | AJMT 侧表回填 `insns` | `unpack_v2.py` | sha256 / 空方法率 |
+| 疑似 VMP / B13 / Java2CPP | **拒绝解固**（认知边界：须动态 trace） | — | — |
+| 未见已知加固特征 | **拒绝解固**（≠未加固） | — | — |
+
+## upx 版本说明（本机实测教训）
+
+本工具**优先用 PATH 里的 upx**（本机 5.2.1 实测能解开仓库全部标准/变种样本），
+PATH 没有才回退各 lab 自带的 `upx.exe`（4.2.4，lab 实测基线）。
+注意 upx 的环境变量坑：**upx 自身会把名为 `UPX` 的环境变量当选项串解析**，
+设成 exe 路径会让 upx 5.2.1 直接报 `invalid string ... in environment variable 'UPX'`。
+因此 `unpack.py` 调用 lab solve 前会摘掉进程 env 的 `UPX`，改走 `--upx` 显式参数。
+
+## 三个脚本
+
+| 脚本 | 作用 |
+|---|---|
+| `labs.py` | 只读桥接层：按文件路径加载各 lab 模块（无包式 import，互不污染） |
+| `analyzer.py` | 统一判定入口；SO 管线跑 360+UPX 双检测器互为交叉验证，APK/dex 走 ajiami |
+| `unpack.py` | 解固入口：判定 → 路由 → 两级验证（`--pristine` 给黄金样本则 byte-exact） |
+| `regression.py` | 全仓库混淆矩阵：19 样本 × 双向断言 + SO 检测器交叉验证；exit 0 = 全绿 |
+
+产物目录：`unpacker_output/<样本名>/`（不污染样本所在目录）。
+输出约定：`[!]=失败/告警`、`[*]=步骤`、`[+]=成功`；每个结论都附认知边界提示。
