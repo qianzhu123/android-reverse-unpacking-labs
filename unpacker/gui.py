@@ -53,6 +53,36 @@ class _QueueWriter:
         pass
 
 
+def _install_no_window_subprocess():
+    """让 lab 代码里的 subprocess 调用不再弹出黑色控制台窗口。
+
+    根因：--noconsole 打包的 GUI 进程里，每次 lab 脚本 subprocess.run() 启动
+    console 子程序（upx / aapt2 …），Windows 会为它新建一个控制台窗口，跑完即关
+    ——这就是"每操作一步黑框一闪而过"。
+
+    解法：把 subprocess 模块的 run / Popen / call / check_call / check_output
+    替换成"默认加 CREATE_NO_WINDOW"的包装版。lab 代码 import 的是同一个模块对象，
+    拿到的即是无窗口版——【不需要改任何 lab 代码】。
+    （只对未显式传 creationflags 的调用生效；多加一个旗标，其余语义不变。）
+    """
+    import subprocess as _sp
+
+    _NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
+
+    if getattr(_sp.Popen, '_no_window_patched', False):
+        return                                  # 幂等：重复调用直接返回
+
+    def _patched_init(self, *a, **kw):
+        kw['creationflags'] = kw.get('creationflags', 0) | _NO_WINDOW
+        _sp.Popen.__orig_init(self, *a, **kw)
+    _sp.Popen.__orig_init = _sp.Popen.__init__
+    _sp.Popen.__init__ = _patched_init
+    _sp.Popen._no_window_patched = True
+
+    # run / call / check_* 底层都走 Popen，Popen 补丁已覆盖它们；
+    # 但 run(..., creationflags=X) 显式传值时经由 Popen 补丁叠加，仍安全。
+
+
 class Gui:
     def __init__(self, repo_root):
         self.repo = repo_root
@@ -219,6 +249,7 @@ class Gui:
         self.status.set('运行中: %s …' % name)
 
         def run():
+            _install_no_window_subprocess()   # lab 的 subprocess 调用不再闪黑框（幂等）
             old_out, old_err = sys.stdout, sys.stderr
             sys.stdout = _QueueWriter(self.q, '')
             sys.stderr = _QueueWriter(self.q, '[!]')

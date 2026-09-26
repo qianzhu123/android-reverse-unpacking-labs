@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-build_exe.py — 把 unpacker 打成单文件 exe（PyInstaller），一次出两个：
+build_exe.py — 把 unpacker 打成单文件 exe（PyInstaller）：
 
-  unpacker/dist/unpacker.exe      GUI 版（--noconsole：双击只出界面，无黑色控制台窗口）
-  unpacker/dist/unpacker-cli.exe  CLI 版（--console：analyze/unpack/regression 子命令用）
+  unpacker/dist/unpacker.exe   GUI 版（--noconsole：双击只出界面，无任何黑色控制台窗口）
+                               也可在 cmd/PowerShell 里当 CLI 用（analyze/unpack/regression）
 
 用法（在仓库根执行）：
-  python unpacker/build_exe.py            # 打包两个 exe
+  python unpacker/build_exe.py            # 打包
   python unpacker/build_exe.py --clean    # 打包前清掉 unpacker/build/ dist/ 缓存
 
 所有构建产物都收在 unpacker/ 内部（build/ dist/ labs_bundle 临时副本），
@@ -22,8 +22,9 @@ build_exe.py — 把 unpacker 打成单文件 exe（PyInstaller），一次出�
 
 PyInstaller 细节：
   · onefile 模式，运行时解包到 %TEMP%\_MEIxxxx，labs_bundle 通过 sys._MEIPASS 找到
-  · GUI 版 --noconsole 下 sys.stdout/stderr 为 None——main.py 已做兜底
-    （替换成可丢弃流；错误改走 tk 弹窗）
+  · --noconsole 下 sys.stdout/stderr 为 None——main.py 已做兜底（可丢弃流 + 错误弹窗）；
+    GUI 里每步操作闪黑框的问题由 gui.py 的 _install_no_window_subprocess() 解决
+    （给所有 lab 的 subprocess 调用默认加 CREATE_NO_WINDOW，不改 lab 代码）
 """
 
 import os
@@ -61,7 +62,7 @@ def prepare_bundle():
 
 
 def build_one(name, console):
-    """打一个 exe。console=False 时 GUI 版不带黑色控制台窗口（双击只出界面）。"""
+    """打一个 exe。GUI 版（console=False）双击只出界面、无任何黑色控制台窗口。"""
     cmd = [
         sys.executable, '-m', 'PyInstaller',
         '--noconfirm',
@@ -86,7 +87,7 @@ def build_one(name, console):
         print('[!] 未找到产物 %s' % exe)
         return None
     print('[+] 打包成功: unpacker/dist/%s.exe (%d bytes)%s' % (
-        name, os.path.getsize(exe), '' if console else '  (无黑色控制台窗口)'))
+        name, os.path.getsize(exe), '' if console else '  (无任何黑色控制台窗口)'))
     return exe
 
 
@@ -101,20 +102,15 @@ def main():
     if bundle is None:
         return 1
 
-    # 两个产物：
-    #   unpacker.exe     GUI 版（--noconsole：双击只出界面，无黑色窗口）——分发主形态
-    #   unpacker-cli.exe CLI 版（--console：analyze/unpack/regression 子命令用）
-    # 同一份 main.py：GUI 版跑 CLI 子命令时错误改走弹窗；stdout 为 None 已在 main.py 兜底。
-    ok = True
-    for name, console in (('unpacker', False), ('unpacker-cli', True)):
-        if build_one(name, console) is None:
-            ok = False
-    if not ok:
+    # 单一产物：unpacker.exe（GUI，--noconsole）。CLI 子命令仍可用同一 exe 在
+    # cmd/PowerShell 里调用（有真控制台的终端里 print 正常工作，无黑框问题；
+    # 双击场景=开 GUI）。旧 unpacker-cli.exe 已按用户要求移除。
+    if build_one('unpacker', False) is None:
         return 1
     print('[*] 验证:')
-    print('    unpacker/dist/unpacker.exe            # 双击=GUI（无黑色窗口）；也支持 gui 子命令')
-    print('    unpacker/dist/unpacker-cli.exe analyze 360jiagu/libtarget_360_variant.so')
-    print('    unpacker/dist/unpacker-cli.exe regression')
+    print('    unpacker/dist/unpacker.exe                    # 双击=GUI（无黑色窗口）')
+    print('    unpacker/dist/unpacker.exe analyze <文件>       # 也可在终端里当 CLI 用')
+    print('    unpacker/dist/unpacker.exe regression')
     return 0
 
 

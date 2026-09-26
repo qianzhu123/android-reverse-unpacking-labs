@@ -16,13 +16,15 @@ python unpacker/main.py regression
 python unpacker/analyzer.py ...   python unpacker/unpack.py ...   python unpacker/regression.py
 ```
 
-**② 单文件 exe（GUI + CLI 双形态，一次构建出两个）**：
+**② 单文件 exe（GUI 主形态，无任何黑色控制台窗口）**：
 
 ```bash
-python unpacker/build_exe.py        # PyInstaller -> unpacker/dist/ 下两个 exe
+python unpacker/build_exe.py        # PyInstaller -> unpacker/dist/unpacker.exe
 ```
 
-- **`unpacker.exe`（GUI 版，无黑色控制台窗口）**——分发主形态，双击/无参数启动直接开图形界面：
+- **`unpacker.exe` 双击/无参数启动 → 直接开图形界面，全程无黑色控制台窗口**（`--noconsole` 打包；
+  连"每步操作闪一下黑框"也根治了——lab 脚本的 subprocess 调用被 GUI 统一加了
+  `CREATE_NO_WINDOW`，不改 lab 代码）：
   - 顶部拖放区（全窗口接受拖放）：把 APK / dex / so 拖进去
   - 按钮：**① 判定（只读体检）**、**② 解固（判定→路由→验证）**、
     **选黄金样本（可选）**、**选产物位置**（选中/清除都即时反映在旁边标签上）、
@@ -31,7 +33,8 @@ python unpacker/build_exe.py        # PyInstaller -> unpacker/dist/ 下两个 ex
     （APK 出 `_unpacked.dex`）；产物已存在时自动加 `_1/_2` 编号，**不静默覆盖**
   - 输出区实时显示 `[!]/[*]/[+]`（失败红 / 步骤灰 / 成功绿），与 CLI 输出一致；「清空输出」只清历史文本，不打断正在运行的任务
   - 长任务后台线程跑，界面不冻结；无控制台场景下 CLI 型错误改走弹窗
-- **`unpacker-cli.exe`（CLI 版，带控制台）**：`analyze|unpack|regression ...` 子命令用这个（把文件拖到 exe 图标上则直接判定并回车退出）
+- 同一 exe 也可在 cmd/PowerShell 里当 CLI 用：`unpacker.exe analyze|unpack|regression ...`
+  （终端本来就有控制台，不存在黑框问题；把文件拖到 exe 图标上则直接判定并回车退出）
 - **CLI 子命令不变**：`unpacker.exe analyze|unpack|regression ...`（把文件拖到 exe 图标上则直接判定并回车退出）
 
 exe 的仓库定位（解固路由依赖三个 lab 的模块）：**exe 所在目录向上找** >
