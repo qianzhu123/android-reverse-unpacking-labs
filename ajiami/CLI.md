@@ -1,13 +1,13 @@
-# MANUAL.md — 手脱方法：用通用工具与 GUI 工具复现每一步
+# CLI.md — 命令行路线：用通用命令复现每一步
 
-> 本文件与 `SCRIPT.md` **结构完全平行**（同一套章节骨架一一对应），只讲「通用工具怎么做」。
-> 命令行工具用 **unzip / aapt2 / xxd / apkutil(熵) / readelf / sha256sum / cmp / grep**；
-> 图形化工具用 **binwalk(熵曲线) / jadx(反编译)**，穿插在对应步骤里演示——
-> 目的是**亲手走一遍脚本做的每一步**，而不是只会跑脚本。配套的一键脚本见 `SCRIPT.md`。
+> 本文件与 `SCRIPT.md`、`GUI.md` **结构完全平行**（同一套章节骨架一一对应），只讲「命令行怎么做」。
+> 命令行工具用 **unzip / aapt2 / xxd / apkutil(熵) / readelf / sha256sum / cmp / grep**——
+> 目的是**亲手走一遍脚本做的每一步**，而不是只会跑脚本。配套的一键脚本见 `SCRIPT.md`，
+> 图形工具（jadx / binwalk / 010 Editor）见 `GUI.md`。
 >
-> PowerShell 下 `xxd` 可用 `Format-Hex -Path <文件> -Offset <偏移> -Count <长度>` 替代；`aapt2`/`binwalk` 这类 Windows 程序传参要用盘符风格路径（`X:/...`），`unzip`/`xxd`/`sha256sum` 这类 Git Bash 工具可用 `/d/...`。
+> PowerShell 下 `xxd` 可用 `Format-Hex -Path <文件> -Offset <偏移> -Count <长度>` 替代；`aapt2` 这类 Windows 程序传参要用盘符风格路径（`X:/...`），`unzip`/`xxd`/`sha256sum` 这类 Git Bash 工具可用 `/d/...`。
 > 所有命令单行书写，每行用 `# =>` 注释判读。
-> **学习路线说明**：判定靠命令（可量化、可写进判据），看懂靠 GUI（jadx 出 Java、binwalk 出曲线）。先用命令拿到"是什么代次"的硬结论，再用 GUI 打开看懂"它长什么样"。二者是手脱的两条腿，不是二选一。
+> **路线分工**：判定靠命令（可量化、可写进判据），看懂靠 GUI（jadx 出 Java、binwalk 出曲线）——见 `GUI.md`。
 
 ---
 
@@ -17,7 +17,7 @@
 **建模说明与循环论证风险**：同 `SCRIPT.md`「为什么自造样本」——商业加固无法离线复现，故从同一份源码自造壳与业务样本；自造样本必然对自造检测器「全对」，故强制配对抗式负样本 + 双向回归断言（见「一键批量 + 负样本回归」节）。
 **三条硬约束**（与脚本版一致）：先确定性规则再谈 LLM；基于 evidence（结构特征）；配置外置。
 
-### 三分钟跑一遍（手脱版 · 三代全覆盖最小闭环）
+### 三分钟跑一遍（命令行版 · 三代全覆盖最小闭环）
 
 ```bash
 cd ajiami
@@ -47,19 +47,19 @@ unzip -l samples/apks/app_packed_v3.apk
 #   => 侧表变成 assets/brand_res_v3.dat（资源名混淆）+ 多出低熵 config.txt（诱饵，骗"按熵找 payload"）
 ```
 
-①–③ 定性「一代整体加密」；④ 看「类抽取」与一代的结构差异；⑤ 看「资源名混淆 + 诱饵」对文件名/熵判定的干扰。三代的逐步手脱展开见「判定」与「脱壳」两节。
+①–③ 定性「一代整体加密」；④ 看「类抽取」与一代的结构差异；⑤ 看「资源名混淆 + 诱饵」对文件名/熵判定的干扰。三代的逐步命令行复现见「判定」与「脱壳」两节。
 
 ### 文件与样本索引
 
-`tools/`（本文档**不使用**，仅列作对照；手脱用通用工具 + GUI 工具）：
+`tools/`（本文档**不使用**，仅列作对照；命令行路线用通用命令，图形工具见 `GUI.md`）：
 
-| 工具 | 本文档对应手脱手段 |
+| 工具 | 本文档对应命令行手段 |
 |------|--------------------|
-| `detect.py` | `unzip -l` + `aapt2` + `xxd` + `apkutil entropy` / `binwalk -E` + `jadx` 反编译（「判定」） |
+| `detect.py` | `unzip -l` + `aapt2` + `xxd` + `apkutil entropy`（「判定」） |
 | `unpack_v1.py` | `xxd` 读 payload + 手算 XOR + 写回 dex（「脱壳 · 一代」） |
 | `unpack_v2.py` | `xxd` 读 `code_item.insns` + 侧表解密 + 回填（「脱壳 · 二/三代」） |
 | `verify.py` | `sha256sum` + `cmp` + `grep`（「验证」节） |
-| `walkthrough.py` | 手动读 dex 头偏移（「字节偏移指南」） |
+| `walkthrough.py` | 命令行读 dex 头偏移（「字节偏移指南」） |
 | `reset_lab.py` | `cp pristine/* samples/`（「复位」） |
 
 `samples/` 清单与 `SCRIPT.md`「文件与样本索引」完全相同（一代 `v1` / 二代 `v2` / 三代 `v3` / 变种 `v2_variant` / VMP `app_vmp` / SO `app_so_packed` / 负样本）。
@@ -70,19 +70,19 @@ unzip -l samples/apks/app_packed_v3.apk
 
 ```
 ajiami/
-├── samples/         # 干净基线样本（手脱对象）
+├── samples/         # 干净基线样本（命令行分析对象）
 ├── pristine/        # samples/ 的 sha256 清单备份（「复位」节用）
 ├── analysis_output/  # 脱壳还原产物（写到这里）
 ├── app/ shell/ build/ tools/ logs/   # 源码/构建/脚本/日志
 ```
 
-> 手脱时所有产物写到 `analysis_output/`，不污染 `samples/`。配置全部外置，换机器也能跑。
+> 命令行复现时所有产物写到 `analysis_output/`，不污染 `samples/`。配置全部外置，换机器也能跑。
 
 ---
 
 ## 知识点总览（三代演化 + 保护体系）
 
-> 本节只讲**原理**；每小节的「判定」与「脱壳」分别落到「判定」「脱壳」两节的通用工具演示。（正文与 `SCRIPT.md`「知识点」完全一致，便于单文档自包含。）
+> 本节只讲**原理**；每小节的「判定」与「脱壳」分别落到「判定」「脱壳」两节的通用命令演示。（正文与 `SCRIPT.md`「知识点」完全一致，便于单文档自包含。）
 
 ### 完整保护体系总览
 Ajiami 是多层叠加：`DEX 保护`（整体加密/代码分离/函数抽取/动态还原/DEX VMP）、`Native 保护`（SO 加壳/SO Linker/SO 防调用/SO VMP）、`Java→Native Java2CPP`、`对抗`（防调试/防注入/防 Hook/完整性校验/签名保护）。本工程样本覆盖 DEX 保护主线；其余在「DEX VMP」节起补齐知识框架。**两条原则**：① DEX 与 Native 常形成链，须同时进 ELF/SO；② 不只盯 `classes.dex`，要查 `assets/` `lib/` `res/` 与非标准文件。
@@ -104,30 +104,30 @@ Ajiami 是多层叠加：`DEX 保护`（整体加密/代码分离/函数抽取/�
 
 ### 独立数据载荷 + 多 SO 执行链 **[知识框架]**
 真实样本常见 `assets/ijiami.ajm` `lib/libexec.so` 等「缩壳 DEX + 独立载荷 + Native 链」。分析要查 `assets/`（大高熵文件）、`lib/*/`（加固 SO）、`res/`、其它非标准文件。本工程 DEX 样本不含这类独立 SO 载荷，但「判定 · SO 样本(B13)」节的 **B13** 已能覆盖 SO 侧。
-**可跑的检查（通用工具）**：`unzip -l <apk>` 列全条目即手动版「不只盯 classes.dex」；逐条目算熵见「判定 · 一代」节的做法。
+**可跑的检查（命令行）**：`unzip -l <apk>` 列全条目即命令行版「不只盯 classes.dex」；逐条目算熵见「判定 · 一代」节的做法。
 
 ### Native 保护：SO 加壳 / SO Linker / SO 防调用 / SO VMP **[可验证]**
 **SO Linker**：非标准 Native 加载/链接（自己按 Program Header 装载，不写标准节头）。本工程已有 SO 样本 `app_so_packed.apk`（NDK 编译、节头表剥离模拟自实现 Linker），由 **B13** 自动识别；SO VMP / SO 防调用仍属知识框架（待扩展）。**判定 →「判定 · SO 样本(B13)」节。**
 
 ### Java2CPP（Java → Native） **[知识框架]**
 Java → C++ → SO，DEX Java 代码减少、逻辑转 Native。**识别**：DEX 干净 + SO 庞大 + 业务减少 → 考虑 Java2CPP；判据 B12（native 占比 ≥ 30%）。本工程无样本，属知识框架。同样让 **B3 失效**。
-**可跑的检查（通用工具）**：`unzip -l <apk>` 看 lib/ 下 SO 体积与 classes.dex 的比例；`strings <so> | head` 看 SO 里是否残留业务方法名（Java2CPP 转译常见痕迹）。
+**可跑的检查（命令行）**：`unzip -l <apk>` 看 lib/ 下 SO 体积与 classes.dex 的比例；`strings <so> | head` 看 SO 里是否残留业务方法名（Java2CPP 转译常见痕迹）。
 
 ### 双重 VMP（DEX VMP + SO VMP） **[知识框架]**
 `Java/Dex → DEX VMP → Native → SO VMP`。两层虚拟化须**两层都看**。
-**可跑的检查（通用工具）**：B11 形态用 `dexdump -d <apk> | grep <解释器方法名>` 看汇聚调用；B13 用 `readelf -h <so>` 看节头数是否为 0；两个都中才提示双重 VMP。
+**可跑的检查（命令行）**：B11 形态用 `dexdump -d <apk> | grep <解释器方法名>` 看汇聚调用；B13 用 `readelf -h <so>` 看节头数是否为 0；两个都中才提示双重 VMP。
 
 ### 字符串加密 **[知识框架]**
 JADX 里关键 URL/密钥/类名/错误信息可能搜不到。处理：从「静态搜索」转「使用点 → 运行期解密 → 明文」。与「变种样本 · 字符串混淆」的区别：该节是等长替换（串还在只是变形），字符串**加密**静态不可读须找解密点。属认知边界（动态还原）。
-**可跑的检查（通用工具）**：`strings <dex>` 找不到已知业务串 + `xxd` 看 data 段高熵，即提示「串可能被加密」；定性解密点须动态（Frida hook String.valueOf 等）。
+**可跑的检查（命令行）**：`strings <dex>` 找不到已知业务串 + `xxd` 看 data 段高熵，即提示「串可能被加密」；定性解密点须动态（Frida hook String.valueOf 等）。
 
 ### 完整性 / 签名保护 **[知识框架]**
 DEX/SO/资源防篡改 + 签名保护。改 APK 重打包运行异常，可能不是代码错而是校验被触发。属认知边界。
-**可跑的检查（通用工具）**：dex 自带校验可手动验证——`xxd -s 0x08 -l 4 <dex>` 读 checksum，用 `python -c "import zlib;d=open('<dex>','rb').read();print(hex(zlib.adler32(d[12:])))"` 重算对比，改一字节必不一致。
+**可跑的检查（命令行）**：dex 自带校验可命令行验证——`xxd -s 0x08 -l 4 <dex>` 读 checksum，用 `python -c "import zlib;d=open('<dex>','rb').read();print(hex(zlib.adler32(d[12:])))"` 重算对比，改一字节必不一致。
 
 ### 反调试 / 反注入 / 反 Hook **[知识框架]**
 防 Java/C 层调试、防注入、防 Hook。现象：附加调试器/动态 Hook → 崩溃退出。**作为独立模块分析，勿混入 DEX 恢复逻辑**。
-**可跑的检查（通用工具）**：`strings <apk内文件> | grep -Ei "frida|substrate|ptrace|/proc/self/maps"` 扫痕迹（即 B10 的手动版，见「框架类判据」节实跑）。
+**可跑的检查（命令行）**：`strings <apk内文件> | grep -Ei "frida|substrate|ptrace|/proc/self/maps"` 扫痕迹（即 B10 的命令行版，见「框架类判据」节实跑）。
 
 ### 样本识别检查表
 `classes.dex` 业务类大量消失、壳类极少；`assets/` 可能有独立加密载荷；`lib/` 可能有加固 SO；DEX 方法可能抽取；Native 可能承担恢复/VMP；关注动态加载、运行时恢复、完整性/环境检查、反调试。**反向提醒**：JADX 里「只有几个奇怪的类」不代表 App 真只有几个类，可能业务 DEX 被移出标准 DEX。
@@ -138,9 +138,9 @@ DEX/SO/资源防篡改 + 签名保护。改 APK 重打包运行异常，可能�
 
 ---
 
-## 判定：这是哪一代（通用工具）
+## 判定：这是哪一代（通用命令）
 
-> 本节完全用通用工具复现 `detect.py` 的判定，不运行任何脚本。每代给出**看什么 / 怎么判**，并标注与脚本判据（Bx）的对应关系。
+> 本节完全用通用命令复现 `detect.py` 的判定，不运行任何脚本。每代给出**看什么 / 怎么判**，并标注与脚本判据（Bx）的对应关系。
 
 ### 一代 · 整体加密
 
@@ -169,14 +169,10 @@ aapt2 dump xmltree --file AndroidManifest.xml samples/apks/app_packed_v1.apk > /
 #   => activity android:name="com.demo.target.MainActivity"（步骤⑥要和 dex 类对比）
 
 # 算熵：确认 payload 是加密（> 7.5 基本可认定）
-# 路线一：本仓工具（结果带字节数，可直接对照 detect.py 输出）
+# 本仓工具（结果带字节数，可直接对照 detect.py 输出）
 python tools/apkutil.py entropy samples/payloads/payload_v1.bin
 #   => 7.8690 bit/byte  (4532 bytes)
-# 路线二：binwalk -E 出熵曲线图（看整体分布；对 APK 内成员需先解出）
-unzip -o -q samples/apks/app_packed_v1.apk assets/ijm_payload.bin -d /tmp/bw
-binwalk -E -p /tmp/bw/payload_entropy.png /tmp/bw/assets/ijm_payload.bin
-#   => 生成熵曲线 PNG：全程高位波动（≈7.9）= 加密数据；若前段低后段高则是"明文头 + 密文体"
-# 工具不可用时的一行手算版（纯标准库，结果应与工具完全一致）
+# 一行手算版（纯标准库，结果应与工具完全一致——两者互为校验）
 python -c "import math;from collections import Counter;b=open('samples/payloads/payload_v1.bin','rb').read();c=Counter(b);n=len(b);e=-sum((v/n)*math.log2(v/n) for v in c.values());print('entropy=%.4f'%e)"
 #   => entropy=7.8690
 ```
@@ -225,7 +221,7 @@ python tools/apkutil.py entropy samples/payloads/payload_v1_variant.bin
 **怎么判**：Manifest 里壳类名已变形 → 朴素字符串搜索（`ijiami`/`ProxyApplication`）**完全失效**；但 DEX 结构一个字节没变，空方法率仍 50%（「判定 · 二代」同法）→ **结构判定照常命中**。这正是「禁止只靠字符串下结论、必须以结构特征为主」的活证。
 **失效边界**：朴素字符串可被混淆/加密彻底绕过；结构判定也可能被 VMP（空方法率归零）绕过——两者盲区相反互补，结论须叠加。
 
-### VMP 样本 · 认知边界（手脱也定性不了）
+### VMP 样本 · 认知边界（命令行也定性不了）
 
 ```bash
 # 看 ZIP 条目：没有 assets/ 高熵 payload，只有很小的 classes.dex
@@ -249,32 +245,8 @@ unzip -l samples/apks/app_vmp.apk
 - `classes.dex` 在（2456 字节），**没有** `assets/` 高熵 payload → 不是一代；
 - 用 `xxd`/`dexdump` 看方法体，`insns` **非零**（是调用解释器的 `invoke-static`，不是全 0 的 nop）→ 不是二代/三代抽取；
 - 于是**静态结构层面无法定性** → 落入认知边界。真正识别须看：方法体是否「调用解释器」（`Vmp.run` 这类）+ 是否存在非法 dalvik 的自定义字节码载荷（`PROG_MIX` 这类 `byte[]`）。
+- 同一样本在 jadx 里「方法退化成 `Vmp.run(PROG_*, args)`」的可读形态，见 `GUI.md`「VMP 样本」节。
 
-**用 jadx 看同一件事（GUI 工具路线）**：
-
-```bash
-# 反编译 VMP 样本，直接在 Java 源码层面看"方法退化成解释器调用"
-jadx -d /tmp/jadx_vmp --no-res samples/apks/app_vmp.apk
-```
-
-实测（`/tmp/jadx_vmp/sources/com/demo/vmapp/VmBusiness.java`，节选）：
-
-```java
-public class VmBusiness {
-    private static final byte[] PROG_MIX = {1, 0, 1, 1, 3, 2, 17, 4, 2, 3, 5, -1};   // ← 自定义字节码载荷
-
-    public static int mix(int i, int i2) {
-        return Vmp.run(PROG_MIX, new int[]{i, i2});    // ← 方法体只剩解释器调用 = B11 的可读形态
-    }
-
-    public static int plainAdd(int i, int i2) {
-        return i + i2;    // ← 未保护的方法保持正常（对照）
-    }
-}
-```
-
-**怎么读**：jadx 把 `detect.py` 的 B11（汇聚调用大方法）翻译成了肉眼可读的 Java——每个被虚拟化的方法都退化成 `Vmp.run(byte[], int[])` 一行，真实的算术逻辑进了 `PROG_*` 字节数组、由 `com.ijiami.vmp.Vmp.run` 的 `switch` 解释执行。**这就是 VMP**：类名/方法名/签名都在（JADX 里"看起来很正常"），但方法体已经不是原逻辑。反过来这解释了为什么 B3 空方法率对 VMP 恒为 0——`insns` 非零，只是"零业务语义"。
-**JADX 的盲区**：① `PROG_*` 字节码是自定义指令集，jadx 只能显示为 `byte[]` 字面量，**还原不了原逻辑**——这是 VMP 的设计目标，不是 jadx 的缺陷；② 对二代抽取样本，jadx 会把 `insns` 全 0 的方法显示为**空方法体**（`public int mix(int i, int i2) {}`），如果不看空方法率、只看"类还在"，会误以为没加固——所以判定要配合结构判据，GUI 工具解决的是"看懂"而不是"判别"。
 > 这是最有价值的反例：**A 与 B 各有盲区、正好互补**——变种上 A 漏报 B 命中；VMP 上 B 漏报 A 命中（包名恰有 `ijiami`）。结论只能：判定须多层证据叠加，单一指标不可押注。
 
 ### SO 样本 · B13（ELF 结构异常，纯 xxd 复现）
@@ -312,7 +284,7 @@ xxd -l 64 analysis_output/so_probe/lib/arm64-v8a/libcalc.so
 
 ### 框架类判据（反调试串 / SO 熵 / 汇聚调用）
 
-通用工具也能做「DEX VMP」~「反调试」各节的**提示性**检查（均不参与定性，只提示「需人工」）：
+通用命令也能做「DEX VMP」~「反调试」各节的**提示性**检查（均不参与定性，只提示「需人工」）：
 
 ```bash
 # 反分析痕迹（反调试/反注入/反 Hook 字符串）—— 命中只说明"可能有"，须动态确认
@@ -328,9 +300,9 @@ dexdump -d samples/apks/app_vmp.apk 2>/dev/null | grep -i "Vmp.run" | head
 
 **失效边界**：以上都只给「线索」，真正定性 VMP / Java2CPP / 字符串加密 / 完整性 / 反调试，必须进**动态分析**——这部分是本工程的认知边界，列为知识框架（待扩展）。
 
-### 一键批量 + 负样本（手脱对照）
+### 一键批量 + 负样本（命令行对照）
 
-手脱没有「一键脚本」，但可用循环把「判定」节的各代判断套到所有样本：
+命令行路线没有「一键脚本」，但可用循环把「判定」节的各代判断套到所有样本：
 
 ```bash
 # 对全部样本看 ZIP 条目 + 熵，人工对照「判定」的判读表
@@ -343,13 +315,13 @@ done
 #   => v2_variant: classes.dex 大 + assets/rqn9xlwvh.yrm（变种，「判定 · 变种」）
 ```
 
-负样本工程（`neg_multidex` / `neg_highentropy` / `neg_native`）用来防止把多 dex / 高熵资源 / 合法 native 库误判成壳 —— 手脱时若 `unzip -l` 看到多 `classes*.dex` 或合法高熵资源，应**先排除**再下结论（对应 `SCRIPT.md`「一键批量 + 负样本回归」的双向回归）。
+负样本工程（`neg_multidex` / `neg_highentropy` / `neg_native`）用来防止把多 dex / 高熵资源 / 合法 native 库误判成壳 —— 命令行判定时若 `unzip -l` 看到多 `classes*.dex` 或合法高熵资源，应**先排除**再下结论（对应 `SCRIPT.md`「一键批量 + 负样本回归」的双向回归）。
 
 ---
 
-## 脱壳：按代还原 dex（通用工具）
+## 脱壳：按代还原 dex（通用命令）
 
-> 手脱即「用十六进制编辑器/通用工具，把脚本做的每一步亲手做一遍」。
+> 命令行路线即「用通用命令，把脚本做的每一步亲手做一遍」。
 
 ### 一代 · 手算 XOR 解密 payload
 
@@ -401,7 +373,7 @@ xxd -s 0xE10 -l 64 samples/dex/classes_merged_orig.dex
 ### 变种脱壳
 与「脱壳 · 二/三代」完全相同（结构一个字节没变），**唯一区别**：回填后的 dex 是带混淆字符串的版本，对照黄金须用 `build/variant/merged_orig_variant.dex`（字符串混淆版），否则逐字节对照失败。
 
-### 结果对照表（手脱目标）
+### 结果对照表（命令行路线目标）
 
 | 还原目标 | 黄金样本 | 校验 | 锚点 | 结论 |
 |----------|----------|------|------|------|
@@ -412,7 +384,7 @@ xxd -s 0xE10 -l 64 samples/dex/classes_merged_orig.dex
 
 ---
 
-## 验证（通用工具 · 是否真还原）
+## 验证（通用命令 · 是否真还原）
 
 ```bash
 # ① sha256 对照（最强判据，一致即逐字节相同）
@@ -429,11 +401,11 @@ cmp analysis_output/unpack_v3_dex.dex samples/dex/classes_merged_orig.dex
 ```
 
 **三项分别说明**：① sha256 一致即逐字节相同；② `AJM-ANCHOR-*` 是业务预埋锚点，缺一个说明没真解开（哪怕长度对）；③ `cmp` 给首个差异字节偏移，是定位「哪一步写错」的入口。
-> 变种黄金是混淆版，锚点数显示 0/0 属正常。这与 `SCRIPT.md`「验证」节的 `verify.py` 三项完全对应，只是用通用工具替代脚本。
+> 变种黄金是混淆版，锚点数显示 0/0 属正常。这与 `SCRIPT.md`「验证」节的 `verify.py` 三项完全对应，只是用通用命令替代脚本。
 
 ---
 
-## 字节偏移指南（手动读 dex 头）
+## 字节偏移指南（命令行读 dex 头）
 
 > 对应脚本 `walkthrough.py`：这里不靠脚本，自己读 dex 头定位各表。
 
@@ -490,10 +462,10 @@ xxd -l 112 samples/dex/classes_orig.dex
 
 ---
 
-## 复位（实验台 · 通用工具）
+## 复位（实验台 · 通用命令）
 
 ```bash
-# 把固化基线 pristine/ 覆盖回 samples/（手脱前先确认 samples/ 是干净基线）
+# 把固化基线 pristine/ 覆盖回 samples/（练习前先确认 samples/ 是干净基线）
 cp -r pristine/. samples/
 
 # 只恢复单个被改坏的样本（例如还原 v2）
@@ -503,13 +475,13 @@ cp pristine/apks/app_packed_v2.apk samples/apks/app_packed_v2.apk
 cp -r samples/ pristine/
 ```
 
-> 手脱不改 `samples/` 最佳；若改了，用上面命令复位。`SCRIPT.md`「复位」的 `reset_lab.py` 是同一逻辑的脚本化（带 sha256 清单校验），`status` 能立刻区分「样本被改坏」还是「脱壳逻辑错」。
+> 练习中不改 `samples/` 最佳；若改了，用上面命令复位。`SCRIPT.md`「复位」的 `reset_lab.py` 是同一逻辑的脚本化（带 sha256 清单校验），`status` 能立刻区分「样本被改坏」还是「脱壳逻辑错」。
 
 ---
 
 ## 决策流程 / 踩坑 / 速查
 
-### 决策流程（手脱版）
+### 决策流程（命令行版）
 
 ```
 ① unzip -l <apk>                         看 classes.dex 大小 + assets/ 有无莫名文件
@@ -523,10 +495,10 @@ cp -r samples/ pristine/
 收尾：sha256sum + grep AJM-ANCHOR + cmp  ← 与黄金样本逐字节对照
 ```
 
-### 踩坑（手脱 / 工具侧）
+### 踩坑（命令行 / 工具侧）
 
 1. **payload 头部顺序**：`[int32_le 长度][magic AJM\x01][密文]`，**magic 在偏移 4**（不在 0）。
-2. **侧表查找靠 magic 不靠文件名**：三代 `brand_res_v3.dat`、变种 `rqn9xlwvh.yrm` 按 `AJMT` 扫描照样定位；手脱时要用 `xxd` 扫 `AJMT` 而非信文件名。
+2. **侧表查找靠 magic 不靠文件名**：三代 `brand_res_v3.dat`、变种 `rqn9xlwvh.yrm` 按 `AJMT` 扫描照样定位；命令行复现时要用 `xxd` 扫 `AJMT` 而非信文件名。
 3. **诱饵文件**：三代放低熵 `config.txt`，「按熵找 payload」会误报，须结合结构判据。
 4. **insns 区 = code_off + 16**：offset 算错会填错位置。
 5. **校验重算顺序**：先 `sha1(data[32:])` 再 `adler32(data[12:])`；反了 dex 报 Bad checksum。

@@ -1,8 +1,8 @@
 # SCRIPT.md — 脚本方法：用 detect / unpack / verify 完成判定与脱壳
 
-> 本文件与 `MANUAL.md` **结构完全平行**（同一套章节骨架一一对应），只讲「脚本怎么做」。
+> 本文件与 `CLI.md`、`GUI.md` **结构完全平行**（同一套章节骨架一一对应），只讲「脚本怎么做」。
 > 所有判定与脱壳都靠 `tools/` 下的 Python 脚本（纯标准库，无外部依赖），不依赖任何大模型。
-> 想亲手走一遍每一步、搞清楚「为什么」的同学，去读 `MANUAL.md`（用 unzip / aapt2 / xxd / 熵工具复现）。
+> 想亲手走一遍每一步、搞清楚「为什么」的同学，去读 `CLI.md`（用 unzip / aapt2 / xxd 等通用命令复现）与 `GUI.md`（用 jadx / binwalk / 010 Editor 等图形工具看懂）。
 >
 > 阅读顺序建议：先把「判定」的结果跑出来（知道「能解开」），再看「脱壳」还原，最后用「验证」收尾。
 
@@ -169,7 +169,7 @@ DEX/SO/资源防篡改 + 签名保护。改 APK 重打包运行异常，可能�
 
 ### 反调试 / 反注入 / 反 Hook **[知识框架]**
 防 Java/C 层调试、防注入、防 Hook。现象：附加调试器/动态 Hook → 崩溃退出。**作为独立模块分析，勿混入 DEX 恢复逻辑**。识别：B10 扫反分析痕迹，但真正确认需动态分析。
-**可跑的检查**：静态痕迹扫描可直接跑——`python tools/detect.py <apk>` 输出的 B10 段（`threat_string_hits`）对 frida/ptrace 等字符串做命中提示；手脱路线用 `strings <dex> | grep -Ei "frida|ptrace"` 同效（见 MANUAL「框架类判据」节）。命中只说明「可能有」，定性须动态。
+**可跑的检查**：静态痕迹扫描可直接跑——`python tools/detect.py <apk>` 输出的 B10 段（`threat_string_hits`）对 frida/ptrace 等字符串做命中提示；命令行路线用 `strings <dex> | grep -Ei "frida|ptrace"` 同效（见 CLI「框架类判据」节）。命中只说明「可能有」，定性须动态。
 
 ### 样本识别检查表
 `classes.dex` 业务类大量消失、壳类极少；`assets/` 可能有独立加密载荷；`lib/` 可能有加固 SO；DEX 方法可能抽取；Native 可能承担恢复/VMP；关注动态加载、运行时恢复、完整性/环境检查、反调试。
@@ -397,7 +397,7 @@ python tools/unpack_v1.py samples/apks/app_packed_v1.apk analysis_output/unpack_
 ```
 
 **逐行怎么读**：`[2]` `decl_len` 是声明原始 dex 长，`magic` 必须 `AJM\x01`（定位靠 magic 不靠文件名）；`[3]` 解密后长应等于 `decl_len`，对不上说明密钥/算法错；`[4]` 开头须 `dex\n037\0`——「解对了」最快判据；`[6]` 与黄金一致 = 本次脱壳成功。
-**失效边界**：payload 头部顺序是 `[int32_le 长度][magic AJM\x01][密文]`，**magic 在偏移 4 不在 0**；若样本改了 XOR 密钥/算法，`[4]` 魔数校验会失败——此时须进「字节偏移指南」看字节确认密钥（MANUAL「脱壳 · 一代」手算验证）。
+**失效边界**：payload 头部顺序是 `[int32_le 长度][magic AJM\x01][密文]`，**magic 在偏移 4 不在 0**；若样本改了 XOR 密钥/算法，`[4]` 魔数校验会失败——此时须进「字节偏移指南」看字节确认密钥（CLI「脱壳 · 一代」手算验证）。
 
 ### 二代 / 三代 · unpack_v2.py
 
@@ -474,9 +474,9 @@ python tools/verify.py analysis_output/unpack_v3_dex.dex samples/dex/classes_mer
 
 ---
 
-## 字节偏移指南（walkthrough.py · 脚本→手动的桥）
+## 字节偏移指南（walkthrough.py · 脚本→命令行的桥）
 
-> `walkthrough.py` **不改任何文件**，只打印「用十六进制编辑器到哪个偏移看、看到什么算什么」，把脚本世界带进 MANUAL.md 的手动世界。
+> `walkthrough.py` **不改任何文件**，只打印「用十六进制编辑器到哪个偏移看、看到什么算什么」，把脚本世界带进 CLI.md 的命令行世界。
 
 ```bash
 python tools/walkthrough.py samples/apks/app_packed_v1.apk
@@ -517,7 +517,7 @@ python tools/walkthrough.py samples/apks/app_packed_v2.apk
   还原后空方法数应为 0（当前 22，还原后 0）。
 ```
 
-**怎么用**：在 MANUAL.md「脱壳」手动复现时，直接用这里给的 `code_off`（如 `0xE00`）去 `xxd -s 0xE10`（=0xE00+16）看 `insns`，再按侧表解密字节回填。`walkthrough.py` 就是「脚本算好的偏移表」，免得自己翻 DEX 头。
+**怎么用**：在 CLI.md「脱壳」命令行复现时，直接用这里给的 `code_off`（如 `0xE00`）去 `xxd -s 0xE10`（=0xE00+16）看 `insns`，再按侧表解密字节回填。`walkthrough.py` 就是「脚本算好的偏移表」，免得自己翻 DEX 头。
 
 ### DexHeader 偏移速查（脚本解析同此）
 
