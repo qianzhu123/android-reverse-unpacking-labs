@@ -1,8 +1,8 @@
-# SCRIPT.md：脚本路线——用本仓 scripts/ 一次跑通分析
+# SCRIPT.md：脚本路线——用本仓 tools/ + build/ 脚本一次跑通分析
 
 ## 概述
 
-一句话定位：`scripts/` 下五个现成脚本把「APK 解包 → ELF 检查 → 构建 → logcat → Frida 取证」整条链路自动化；本路线先用脚本拿到正确答案，CLI.md 和 GUI.md 再拆解每一步为什么。
+一句话定位：`tools/`（分析）+ `build/`（构建）+ `frida/`（hook）下几个现成脚本把「APK 解包 → ELF 检查 → 构建 → logcat → Frida 取证」整条链路自动化；本路线先用脚本拿到正确答案，CLI.md 和 GUI.md 再拆解每一步为什么。
 
 为什么自造样本（建模说明）：同一个 APK 故意装下四种情况——Java 明文、Java 层 XOR、JNI 层 XOR、native 控制流基线 `nativeOpaque`——「代码放在哪里」和「明文何时出现」可以并排比较。当前 APK 是普通 NDK 编译 + 源码级 XOR 运行时解码的基线；`ollvm/toolchains/` 只是外部 OLLVM fork 的接入说明，`app/build.gradle` 没有启用 `-mllvm -fla/-sub/-bcf`，所以现有 APK 不能被描述为「已经用 OLLVM 混淆完成」。
 
@@ -28,19 +28,19 @@ JNI 绑定使用命名导出 `Java_com_example_ollvmlab_MainActivity_nativeSecre
 ```powershell
 cd D:\code\android\reverse\ollvm
 $apk = (Resolve-Path .\samples\apks\app-debug.apk).Path
-.\scripts\analyze-apk.ps1 -Apk $apk -Out analysis\out          # ① apktool+jadx+aapt2 解包
-#   => analysis\out\ 下生成 apktool\ / jadx\ / aapt2-badging.txt
+.\tools\analyze-apk.ps1 -Apk $apk -Out analysis_output          # ① apktool+jadx+aapt2 解包
+#   => analysis_output\ 下生成 apktool\ / jadx\ / aapt2-badging.txt
 
-$so = (Resolve-Path .\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so).Path
-.\scripts\inspect-native.ps1 -So $so                         # ② ELF 符号/段/反汇编
+$so = (Resolve-Path .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so).Path
+.\tools\inspect-native.ps1 -So $so                         # ② ELF 符号/段/反汇编
 #   => SYMBOLS 里看到 Java_..._nativeSecret / ..._nativeOpaque
 
 adb install -r $apk                                            # ③ 装进已授权设备
 adb shell am start -n com.example.ollvmlab/.MainActivity       #   => 启动后点四个按钮
-.\scripts\logcat.ps1                                           # ④ 抓 OLLVM_LAB 日志
+.\tools\logcat.ps1                                           # ④ 抓 OLLVM_LAB 日志
 #   => PLAIN_SECRET=... / JAVA_XOR=... / JNI_SECRET=JNI_SECRET=ollvm-native / OPAQUE_RESULT=43
 
-frida -U -f com.example.ollvmlab -l .\scripts\frida-hook.js --no-pause
+frida -U -f com.example.ollvmlab -l .\frida\frida-hook.js --no-pause
 #   ⑤ 点击 JNI / OLLVM 按钮
 #   => [nativeSecret] JNI_SECRET=ollvm-native
 #   => [nativeOpaque] input=7 result=43
@@ -49,14 +49,14 @@ frida -U -f com.example.ollvmlab -l .\scripts\frida-hook.js --no-pause
 ### 工程结构
 
 ```text
-scripts\analyze-apk.ps1    APK 解包：apktool d + jadx + aapt2 dump badging
-scripts\inspect-native.ps1 ELF 检查：llvm-readelf/-objdump/-strings，筛 JNI 符号与解码循环
-scripts\bootstrap.ps1      环境初始化：JDK 21 + Gradle 8.13 + SDK/NDK 路径打印
-scripts\build.ps1          构建 assembleDebug/Release，可选 -Install 直装
-scripts\logcat.ps1         清空并只看 OLLVM_LAB tag 的 logcat
-scripts\frida-hook.js      Frida hook：Java native 方法返回边界取值
-analysis\out\              脚本输出目录（生成物，已 .gitignore）
-ollvm\toolchains\          外部 OLLVM fork 接入说明（占位，未启用）
+tools\analyze-apk.ps1    APK 解包：apktool d + jadx + aapt2 dump badging
+tools\inspect-native.ps1 ELF 检查：llvm-readelf/-objdump/-strings，筛 JNI 符号与解码循环
+build\bootstrap.ps1      环境初始化：JDK 21 + Gradle 8.13 + SDK/NDK 路径打印
+build\build.ps1          构建 assembleDebug/Release，可选 -Install 直装
+tools\logcat.ps1         清空并只看 OLLVM_LAB tag 的 logcat
+frida\frida-hook.js      Frida hook：Java native 方法返回边界取值
+analysis_output\              脚本输出目录（生成物，已 .gitignore）
+ollvm\toolchains\             外部 OLLVM fork 接入说明（占位，未启用）
 ```
 
 ## 环境与工具
@@ -143,17 +143,17 @@ C/C++ 源码 -> LLVM IR -> OLLVM pass -> AArch64/ARM/x86 指令 -> ELF/SO -> APK
 ```powershell
 cd D:\code\android\reverse\ollvm
 $apk = (Resolve-Path .\samples\apks\app-debug.apk).Path
-.\scripts\analyze-apk.ps1 -Apk $apk -Out analysis\out
+.\tools\analyze-apk.ps1 -Apk $apk -Out analysis_output
 ```
 
 这条命令做什么：apktool 解包（Manifest/资源/smali/按 ABI 的 SO）→ jadx 反编译（在 PATH 时）→ aapt2 dump badging（包名/ABI/debug 标记）。输出目录结构：
 
 ```text
-analysis\out\apktool\AndroidManifest.xml
-analysis\out\apktool\smali\ ... smali_classes2\        # MainActivity 在 smali_classes2（多 dex）
-analysis\out\apktool\lib\<abi>\libollvmlab.so
-analysis\out\aapt2-badging.txt
-analysis\out\jadx\sources\                             # jadx 在 PATH 时生成
+analysis_output\apktool\AndroidManifest.xml
+analysis_output\apktool\smali\ ... smali_classes2\        # MainActivity 在 smali_classes2（多 dex）
+analysis_output\apktool\lib\<abi>\libollvmlab.so
+analysis_output\aapt2-badging.txt
+analysis_output\jadx\sources\                             # jadx 在 PATH 时生成
 ```
 
 实跑 `aapt2-badging.txt` 关键行：
@@ -179,8 +179,8 @@ native-code: 'arm64-v8a' 'armeabi-v7a' 'x86' 'x86_64'
 ### `inspect-native.ps1`：ELF 段、符号、密文与解码循环
 
 ```powershell
-$so = (Resolve-Path .\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so).Path
-.\scripts\inspect-native.ps1 -So $so
+$so = (Resolve-Path .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so).Path
+.\tools\inspect-native.ps1 -So $so
 ```
 
 这条命令做什么：用 NDK r27d 的 `llvm-readelf -Ws`（符号）、`llvm-readelf -S`（段）、`llvm-strings`（字符串）、`llvm-objdump -d --demangle`（反汇编）逐项过滤 JNI 相关内容。实跑输出（节选）：
@@ -220,7 +220,7 @@ libollvmlab.so
 脚本默认（不带 `-So`）会在 `app\build\intermediates\...` 下自动找 arm64 SO；找不到 SO 时先确认：
 
 ```powershell
-Get-ChildItem .\analysis\out\apktool\lib -Recurse -Filter libollvmlab.so
+Get-ChildItem .\analysis_output\apktool\lib -Recurse -Filter libollvmlab.so
 ```
 
 实跑（四个 ABI 全部在场，arm64 最大）：
@@ -266,9 +266,9 @@ i=2: (55 ^ 29) + 1 = 43
 ### `build.ps1 -Install` / `logcat.ps1`：安装并取证
 
 ```powershell
-.\scripts\build.ps1 -Variant debug -Install
+.\build\build.ps1 -Variant debug -Install
 #   => 构建（必要时）+ adb install -r + am start；APK 已存在时可直接 adb install -r 手动装
-.\scripts\logcat.ps1
+.\tools\logcat.ps1
 ```
 
 `logcat.ps1` 就是两条命令的封装：`adb logcat -c` 清空缓冲 + `adb logcat -s OLLVM_LAB:D '*:S'` 只看 `OLLVM_LAB` tag。依次点击四个按钮，预期输出：
@@ -292,7 +292,7 @@ OPAQUE_RESULT=43
 ### `frida-hook.js`：在 Java native 返回边界取值
 
 ```powershell
-frida -U -f com.example.ollvmlab -l .\scripts\frida-hook.js --no-pause
+frida -U -f com.example.ollvmlab -l .\frida\frida-hook.js --no-pause
 ```
 
 脚本内容就是两个 `implementation` 替换：`nativeSecret` 打印返回值、`nativeOpaque` 打印输入输出。点击 JNI 和 OLLVM 按钮，输出：
@@ -350,8 +350,8 @@ Java 返回/日志         -> show() 或 Log.i("OLLVM_LAB", ...)
 ### 基线固定
 
 ```powershell
-$baseline = (Resolve-Path .\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so).Path
-.\scripts\inspect-native.ps1 -So $baseline
+$baseline = (Resolve-Path .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so).Path
+.\tools\inspect-native.ps1 -So $baseline
 Get-FileHash $baseline -Algorithm SHA256
 #   => 555B4EE785E5040FA1F7CC503FAFDA16B88411C79C242E769BADDCA22BA318C2
 ```
@@ -374,7 +374,7 @@ Get-FileHash $baseline -Algorithm SHA256
 
 ```powershell
 $variant = (Resolve-Path .\path\to\variant\libollvmlab.so).Path
-.\scripts\inspect-native.ps1 -So $variant
+.\tools\inspect-native.ps1 -So $variant
 ```
 
 比较 `.text`/`.rodata`/`.dynsym` 大小、JNI 导出是否仍在、函数符号存留、完整字符串是否仍在 `.rodata`、XOR/key/`NewStringUTF` 路径是否仍存在。行为验证：点 OLLVM 按钮确认 `nativeOpaque(7)` 仍输出 `43`，点 JNI 按钮确认仍显示 `JNI_SECRET=JNI_SECRET=ollvm-native`；同设备同 ABI 记录延迟与体积；Frida/LLDB 比较入口、返回点和单步体验。
@@ -424,9 +424,9 @@ UI/日志/网络等 sink：
 
 | 现象 | 处理 |
 | --- | --- |
-| `APK not found` | 分析用归档副本 `samples\apks\*.apk`；构建产物在 `app\build\outputs\apk\...`，只有缺失时才 `.\scripts\build.ps1 -Variant debug` |
+| `APK not found` | 分析用归档副本 `samples\apks\*.apk`；构建产物在 `app\build\outputs\apk\...`，只有缺失时才 `.\build\build.ps1 -Variant debug` |
 | jadx 不在 PATH | `analyze-apk.ps1` 用 `Get-Command jadx` 检测，不会扫用户目录；把 jadx 的 `bin` 加入 PATH，或手动用 `%USERPROFILE%\.local\share\jadx\bin\jadx.bat` |
-| 找不到 SO | 先跑 `analyze-apk.ps1`，再 `Get-ChildItem analysis\out\apktool\lib -Recurse -Filter libollvmlab.so` |
+| 找不到 SO | 先跑 `analyze-apk.ps1`，再 `Get-ChildItem analysis_output\apktool\lib -Recurse -Filter libollvmlab.so` |
 | LLDB 断点未命中 | 确认装的是 debug APK、ABI 匹配、模块已加载；`decode_secret` 可能已内联 |
 | `frida` 找不到进程 | 检查 `adb devices`、包名、Frida Server 版本和 `-f` 启动参数 |
 | 构建失败 | 先 `java -version`；`bootstrap.ps1` 要求 JDK 21 在写死路径，命令行 Java 版本 ≠ Gradle 实际用的 JDK |

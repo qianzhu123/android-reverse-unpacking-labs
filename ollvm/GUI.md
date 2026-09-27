@@ -22,13 +22,13 @@
 ```powershell
 cd D:\code\android\reverse\ollvm
 & "$env:USERPROFILE\.local\share\jadx\bin\jadx.bat" `
-  -d .\analysis\out\jadx .\samples\apks\app-debug.apk
-#   ① jadx 反编译：打开 .\analysis\out\jadx\sources\com\example\ollvmlab\MainActivity.java
+  -d .\analysis_output\jadx .\samples\apks\app-debug.apk
+#   ① jadx 反编译：打开 .\analysis_output\jadx\sources\com\example\ollvmlab\MainActivity.java
 #   => 直接看到 PLAIN_SECRET 明文、XOR_BLOB/XOR_KEY=90、native 两个声明
 ```
 
 ```text
-② IDA 打开 .\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so
+② IDA 打开 .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so
    -> 等 Auto-analysis -> Exports 里找 Java_..._nativeSecret
    -> 双击进入 -> F5 看伪代码 -> 跟进 sub_24FD4
    => 看到 mov w8, #0x5a / eor / push_back 解码循环，0x14db9 处 24 字节密文
@@ -37,9 +37,9 @@ cd D:\code\android\reverse\ollvm
 ### 工程结构（GUI 路线会用到的路径）
 
 ```text
-analysis\out\jadx\sources\com\example\ollvmlab\MainActivity.java   jadx 反编译 Java
-analysis\out\apktool\lib\arm64-v8a\libollvmlab.so                  IDA 分析对象（arm64 debug）
-analysis\out\apktool\smali_classes2\com\example\ollvmlab\...       smali 原始字节码（jadx 看不懂时兜底）
+analysis_output\jadx\sources\com\example\ollvmlab\MainActivity.java   jadx 反编译 Java
+analysis_output\apktool\lib\arm64-v8a\libollvmlab.so                  IDA 分析对象（arm64 debug）
+analysis_output\apktool\smali_classes2\com\example\ollvmlab\...       smali 原始字节码（jadx 看不懂时兜底）
 app\src\main\cpp\native-lib.cpp                                   JNI 源码（对照用）
 ```
 
@@ -102,10 +102,10 @@ IDA 应该分析的是 JNI native 实现和 native 控制流，不替代 JADX �
 ```powershell
 cd D:\code\android\reverse\ollvm
 & "$env:USERPROFILE\.local\share\jadx\bin\jadx.bat" `
-  -d .\analysis\out\jadx .\samples\apks\app-debug.apk
+  -d .\analysis_output\jadx .\samples\apks\app-debug.apk
 ```
 
-点哪里/看什么：打开 `analysis\out\jadx\sources\com\example\ollvmlab\MainActivity.java`，应看到三段并列的代码（实跑摘录）：
+点哪里/看什么：打开 `analysis_output\jadx\sources\com\example\ollvmlab\MainActivity.java`，应看到三段并列的代码（实跑摘录）：
 
 ```java
 private static final byte[] XOR_BLOB;
@@ -149,7 +149,7 @@ Java 类/方法
 
 ```powershell
 $apk = (Resolve-Path .\samples\apks\app-debug.apk).Path
-$so = (Resolve-Path .\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so).Path
+$so = (Resolve-Path .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so).Path
 Get-FileHash $so -Algorithm SHA256
 #   => 555B4EE785E5040FA1F7CC503FAFDA16B88411C79C242E769BADDCA22BA318C2
 ```
@@ -159,7 +159,7 @@ IDA 应打开与设备 ABI 匹配的 ELF（arm64 → AArch64；armeabi-v7a → A
 大型 APK 先按 ABI 和库名排序再决定分析谁（自有命名库 > 业务 JNI/加密/授权库 > 游戏引擎/广告统计 > 纯资源适配库）：
 
 ```powershell
-Get-ChildItem .\analysis\out\apktool\lib -Recurse -Filter '*.so' |
+Get-ChildItem .\analysis_output\apktool\lib -Recurse -Filter '*.so' |
     Select-Object FullName, Length | Sort-Object Length -Descending
 #   => arm64-v8a 383632 / x86_64 364320 / x86 359432 / armeabi-v7a 229196
 ```
@@ -262,7 +262,7 @@ sub_25138：疑似 std::string::c_str()/data()，需结合反汇编确认
 
 ### 本项目 debug arm64 SO 的已验证链路
 
-对仓库当前的 `analysis\out\apktool\lib\arm64-v8a\libollvmlab.so`（SHA-256 `555B4EE7...`），用汇编验证伪代码，而不是只信 F5：
+对仓库当前的 `analysis_output\apktool\lib\arm64-v8a\libollvmlab.so`（SHA-256 `555B4EE7...`），用汇编验证伪代码，而不是只信 F5：
 
 ```text
 0x24f10  Java_..._nativeSecret
@@ -455,7 +455,7 @@ Frida hook（脚本见 SCRIPT.md「动态分析」）在 Java native 返回边�
 | 按 ABI 选择 `arm64-v8a`/`armeabi-v7a`/`x86_64`/`x86` | 通用 | 必须与设备和目标 SO 匹配 |
 | IDA 的 ELF Header、Segments、Exports、Imports、Strings、Xrefs、Graph View | 通用 | IDA 版本不同，窗口名称可能略有变化 |
 | 从 JNI 入口追到密文、解码循环、字符串 sink | 通用 | 适用静态命名导出和动态注册（后者入口改为 `JNI_OnLoad/RegisterNatives`） |
-| `.\scripts\analyze-apk.ps1`、`.\scripts\inspect-native.ps1` | 本项目脚本 | 换其他 APK 要替换为自己的 apktool/ELF 工具命令 |
+| `.\tools\analyze-apk.ps1`、`.\tools\inspect-native.ps1` | 本项目脚本 | 换其他 APK 要替换为自己的 apktool/ELF 工具命令 |
 | `com.example.ollvmlab`、`libollvmlab.so`、`Java_com_...` | 当前样本 | 其他应用的包名、库名和 JNI 名不同 |
 | `0x5a`、`XOR_BLOB`、`sub_24FD4`、`sub_25138`、`0x24f10` | 当前构建/ABI | 重编译、换 release、换 ABI 或换编译器后都可能变化，不能当通用地址 |
 

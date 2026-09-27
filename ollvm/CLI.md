@@ -36,7 +36,7 @@ jar tf $apk | Select-String '^classes.*\.dex|^lib/.+\.so'
 #   => classes.dex / classes2.dex / lib/<abi>/libollvmlab.so × 4
 
 $llvm = 'D:\tools\Security\Reverse\Android\dev\android-ndk-r27d\toolchains\llvm\prebuilt\windows-x86_64\bin'
-$so = '.\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so'   # 先跑过 analyze-apk.ps1 或 apktool d
+$so = '.\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so'   # 先跑过 analyze-apk.ps1 或 apktool d
 & "$llvm\llvm-readelf.exe" -Ws $so | Select-String 'Java_com'
 #   ③ 确认 JNI 命名导出 => 两条 Java_..._nativeSecret / nativeOpaque
 
@@ -49,9 +49,9 @@ $so = '.\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so'   # 先跑过 analyz
 ```text
 samples\apks\app-debug.apk        分析主样本
 samples\apks\app-release-unsigned.apk  release 对照
-analysis\out\apktool\...                          apktool 解包产物（smali/SO/Manifest）
-analysis\out\apktool\lib\<abi>\libollvmlab.so     按 ABI 的 native 库
-analysis\out\aapt2-badging.txt                    aapt2 dump badging 输出
+analysis_output\apktool\...                          apktool 解包产物（smali/SO/Manifest）
+analysis_output\apktool\lib\<abi>\libollvmlab.so     按 ABI 的 native 库
+analysis_output\aapt2-badging.txt                    aapt2 dump badging 输出
 app\src\main\cpp\native-lib.cpp                   JNI XOR 与 native 控制流源码
 app\src\main\java\...\MainActivity.java           Java 入口与三个字符串样例
 ```
@@ -78,7 +78,7 @@ app\src\main\java\...\MainActivity.java           Java 入口与三个字符串�
 & "$env:USERPROFILE\.agents\skills\android-reverse-engineering\scripts\check-deps.ps1"
 ```
 
-NDK/SDK/JDK 路径换机时参照 `local.properties.example`；脚本内写死的 apktool 与 NDK llvm 路径变更须同步修改 `scripts\analyze-apk.ps1` 与 `scripts\inspect-native.ps1`。
+NDK/SDK/JDK 路径换机时参照 `local.properties.example`；脚本内写死的 apktool 与 NDK llvm 路径变更须同步修改 `tools\analyze-apk.ps1` 与 `tools\inspect-native.ps1`。
 
 ## 知识点
 
@@ -133,10 +133,10 @@ jar tf $apk | Select-String '^classes.*\.dex|^lib/.+\.so'
 
 ```powershell
 $apktool = 'D:\tools\Security\Reverse\Android\static\apktool\apktool.bat'
-& $apktool d -f $apk -o analysis\out\apktool          # -f 覆盖旧输出，-o 指定输出目录
+& $apktool d -f $apk -o analysis_output\apktool          # -f 覆盖旧输出，-o 指定输出目录
 #   => I: Using Apktool ... on app-debug.apk ...  （解包完成）
 
-Select-String -Path .\analysis\out\apktool\AndroidManifest.xml -Pattern 'package=|debuggable|uses-permission|<activity'
+Select-String -Path .\analysis_output\apktool\AndroidManifest.xml -Pattern 'package=|debuggable|uses-permission|<activity'
 #   => <manifest ... package="com.example.ollvmlab" ...>
 #   => <application android:debuggable="true" android:extractNativeLibs="false" ...>
 #   => <activity android:exported="true" android:name="com.example.ollvmlab.MainActivity">
@@ -147,7 +147,7 @@ Select-String -Path .\analysis\out\apktool\AndroidManifest.xml -Pattern 'package
 aapt2 badging（脚本已生成则直接读）：
 
 ```powershell
-Select-String -Path .\analysis\out\aapt2-badging.txt -Pattern 'package:|sdkVersion|native-code|application-label'
+Select-String -Path .\analysis_output\aapt2-badging.txt -Pattern 'package:|sdkVersion|native-code|application-label'
 #   => package: name='com.example.ollvmlab' versionCode='1' ... compileSdkVersion='36'
 #   => minSdkVersion:'26'
 #   => targetSdkVersion:'35'
@@ -160,7 +160,7 @@ Select-String -Path .\analysis\out\aapt2-badging.txt -Pattern 'package:|sdkVersi
 先确认 jadx 输出存在（没有则用 GUI.md 章节的 jadx 命令生成），然后搜关键锚点：
 
 ```powershell
-Select-String -Path .\analysis\out\jadx\sources\com\example\ollvmlab\MainActivity.java `
+Select-String -Path .\analysis_output\jadx\sources\com\example\ollvmlab\MainActivity.java `
   -Pattern 'PLAIN_SECRET|XOR_BLOB|XOR_KEY|nativeSecret|nativeOpaque|loadLibrary|JAVA_XOR'
 #   => 12: private static final byte[] XOR_BLOB;
 #   => 13: private static final int XOR_KEY = 90;
@@ -178,7 +178,7 @@ Select-String -Path .\analysis\out\jadx\sources\com\example\ollvmlab\MainActivit
 一条命令拿到全部线索。smali 侧（DEX 层原始字节码）再印证：
 
 ```powershell
-$smali = '.\analysis\out\apktool\smali_classes2\com\example\ollvmlab\MainActivity.smali'
+$smali = '.\analysis_output\apktool\smali_classes2\com\example\ollvmlab\MainActivity.smali'
 Select-String -Path $smali -Pattern 'XOR_BLOB|XOR_KEY|nativeSecret|const-string|fill-array-data| xor-int'
 #   => 7: .field private static final XOR_BLOB:[B
 #   => 9: .field private static final XOR_KEY:I = 0x5a
@@ -225,7 +225,7 @@ key、数组和解码循环全在 DEX 中——沿数据流即可还原，这就
 
 ```powershell
 $llvm = 'D:\tools\Security\Reverse\Android\dev\android-ndk-r27d\toolchains\llvm\prebuilt\windows-x86_64\bin'
-$so = (Resolve-Path .\analysis\out\apktool\lib\arm64-v8a\libollvmlab.so).Path
+$so = (Resolve-Path .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so).Path
 
 & "$llvm\llvm-readelf.exe" -S $so | Select-String '\.text|\.rodata|\.dynsym|\.dynstr'
 #   =>  [ 3] .dynsym   DYNSYM   00000000000002f8 0002f8 003648 18  A  7  1  8
@@ -316,10 +316,10 @@ i=0: (38 ^ 3) + 1 = 38 → i=1: (38 ^ 16) + 1 = 55 → i=2: (55 ^ 29) + 1 = 43
 
 ```powershell
 # jadx 输出里搜三样东西（明文/密文声明/native 声明）
-Select-String -Path .\analysis\out\jadx\sources\com\example\ollvmlab\*.java `
+Select-String -Path .\analysis_output\jadx\sources\com\example\ollvmlab\*.java `
   -Pattern 'PLAIN_SECRET|XOR_BLOB|XOR_KEY|nativeSecret|nativeOpaque|loadLibrary'
 # smali 里搜解码循环
-Select-String -Path .\analysis\out\apktool\smali_classes2\com\example\ollvmlab\MainActivity.smali `
+Select-String -Path .\analysis_output\apktool\smali_classes2\com\example\ollvmlab\MainActivity.smali `
   -Pattern 'XOR_BLOB|XOR_KEY|fill-array-data| xor-int|const-string'
 # SO 里搜 JNI 导出与解码指令
 & "$llvm\llvm-readelf.exe" -Ws $so | Select-String 'Java_com|decode_secret'
@@ -360,12 +360,12 @@ JNI_SECRET=JNI_SECRET=ollvm-native
 OPAQUE_RESULT=43
 ```
 
-判读：四条日志 = 三种字符串路径 + 一个控制流基线的运行时答案；`JNI_SECRET=JNI_SECRET=...` 的重复前缀来自按钮代码拼接，属预期。`scripts\logcat.ps1` 就是这两条命令的封装。
+判读：四条日志 = 三种字符串路径 + 一个控制流基线的运行时答案；`JNI_SECRET=JNI_SECRET=...` 的重复前缀来自按钮代码拼接，属预期。`tools\logcat.ps1` 就是这两条命令的封装。
 
 ### ③ Frida 在 Java native 返回边界取值
 
 ```powershell
-frida -U -f com.example.ollvmlab -l .\scripts\frida-hook.js --no-pause
+frida -U -f com.example.ollvmlab -l .\frida\frida-hook.js --no-pause
 ```
 
 `-U` 走 USB 设备、`-f` spawn 启动、`-l` 加载 hook 脚本。点击 JNI 和 OLLVM 按钮：
@@ -412,7 +412,7 @@ Get-FileHash $variant_so -Algorithm SHA256
 | 本机没有 `rg` / `7z` | 用 `Select-String` / `jar tf` 等价替代；文档命令已按本机实况写 |
 | `llvm-objdump -s --start-address` 输出超长 | 必须 `-j .rodata` 限定节，否则 dump 全部节 |
 | `decode_secret` 在 `-Ws` 里找不到 | `static` 函数被内联是常态；从 `Java_..._nativeSecret` 入口跟 `bl` 链 |
-| 找不到 SO | 先跑 apktool 解包；`Get-ChildItem .\analysis\out\apktool\lib -Recurse -Filter libollvmlab.so` |
+| 找不到 SO | 先跑 apktool 解包；`Get-ChildItem .\analysis_output\apktool\lib -Recurse -Filter libollvmlab.so` |
 | 不同 ABI 地址对不上 | 每个 SO 是独立二进制，地址/CFG/哈希分 ABI 记录，不跨 ABI 套用 |
 | release 和 debug 差异大 | 记录变体/哈希/ABI；当前 release 未启用 R8/ProGuard，也不是 OLLVM |
 | `adb install` 签名失败 | 测试设备上卸载旧包再装；`-r` 只解决覆盖不解决签名不一致 |

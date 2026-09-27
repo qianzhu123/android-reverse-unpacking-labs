@@ -57,27 +57,36 @@ android-reverse/
 ├── .gitignore
 ├── PROMPT.md            # reusable prompt template for spinning up a new lab
 ├── 360jiagu/            # 360-style native hardening (modeled as a modified UPX)
-│   ├── SCRIPT.md  MANUAL.md
+│   ├── SCRIPT.md  CLI.md  GUI.md
 │   ├── src/             # libtarget source (target.c, policy_inc.h)
 │   ├── tools/           # detectors, solvers, variant/negative generators, reset_lab.py
 │   ├── build/           # build_android.sh, pack.sh, locate.sh, gen_policy.py
-│   ├── pristine/        # baseline .so + sha256 manifest
+│   ├── samples/so/      # analyzed .so samples (no samples at lab root)
+│   ├── pristine/        # baseline copy + sha256 manifest
 │   └── analysis_output/ # detection / dump / solve reports
 ├── upx_practice/        # vanilla UPX + a feature-rewritten variant
-│   ├── SCRIPT.md  MANUAL.md
-│   ├── src/ tools/ build/ pristine/ analysis_output/
-└── ajiami/              # Aijiami-style DEX hardening: 3 generations + string-obf variant
-    ├── SCRIPT.md  MANUAL.md
+│   ├── SCRIPT.md  CLI.md  GUI.md
+│   ├── src/ tools/ build/ samples/so/ pristine/ analysis_output/
+├── ajiami/              # Aijiami-style DEX hardening: 3 generations + string-obf variant
+    ├── SCRIPT.md  CLI.md  GUI.md
     ├── app/  shell/  neg/  vmp/  samples/{apks,dex,payloads}/
     ├── tools/           # detect.py, unpack_v1/v2/v3.py, check_negatives.py, ...
     ├── build/           # build_*.sh, pack.sh, env.sh, lab.keystore
     ├── pristine/  logs/  analysis_output/
+└── ollvm/               # OLLVM / string-protection lab (code obfuscation)
+    ├── SCRIPT.md  CLI.md  GUI.md
+    ├── samples/apks/    # archived debug/release APKs (hashes in the docs)
+    ├── app/             # self-built app: Java plaintext / Java XOR / JNI XOR / nativeOpaque
+    ├── build/           # build.ps1, bootstrap.ps1 (PowerShell toolchain)
+    ├── tools/           # analyze-apk.ps1, inspect-native.ps1, logcat.ps1
+    ├── frida/           # frida-hook.js (Java/native boundary hook)
+    └── analysis_output/ # apktool / jadx unpack output (gitignored)
 ```
-
-> `ollvm/` (LLVM obfuscation experiments) lives in this directory but is an
-> **independent git repository** and is intentionally excluded from this project via
-> `.gitignore`. It is out of scope — this repo covers *packers / shell protectors*, not
-> code-obfuscation.
+> `ollvm/` covers *code obfuscation / string protection*, which is outside the
+> packers / shell-protector scope of the other labs, so it does not use the unpacking
+> prompt template — but it follows the same three-doc + fixed-directory-layout
+> conventions. It used to be an independent git repo; its history was folded into this
+> repository.
 
 ---
 
@@ -88,9 +97,10 @@ android-reverse/
 | `360jiagu` | 360 native hardening, modeled as a **modified UPX** (magic `UPX!` → `JG!!`, marker `360 4.24`) | self-built NDK `.so` | structural detection, runtime-unpack → OEP → ELF Fix, variant handling, B13 |
 | `upx_practice` | vanilla UPX + a **feature-rewritten variant** | self-built NDK `.so` | scoring detector, dump-and-fix, negative / section-stripped samples |
 | `ajiami` | Aijiami DEX hardening — gen-1 (whole-DEX encryption) → gen-2 (class extraction) → gen-3 + string-obfuscation variant | self-built Android app + shell | 3-generation detection, script + manual unpack, negative-sample regression |
+| `ollvm` | Java plaintext / Java XOR / JNI XOR string protection + native control-flow baseline (`nativeOpaque`); OLLVM pass comparison via external fork | self-built Android app (archived debug/release APKs) | three-way SCRIPT/CLI/GUI analysis, verified native address chain (`0x24f10 → 0x24fd4 → 0x14db9`), PowerShell toolchain |
 
-Each lab's docs are `SCRIPT.md` (script route) + `MANUAL.md` (manual route) — two
-parallel documents sharing a fixed `§0`–`§8` skeleton.
+Each lab's docs are `SCRIPT.md` (script route) + `CLI.md` (command-line route) +
+`GUI.md` (GUI-tool route) — three parallel documents sharing one section skeleton.
 
 ---
 
