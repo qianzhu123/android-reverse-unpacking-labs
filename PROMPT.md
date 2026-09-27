@@ -1,295 +1,378 @@
-# Android 逆向练习 · 可复用提示词
+# Android Reverse-Engineering Labs · Reusable Prompt
 
-> 放在仓库根目录 `PROMPT.md`，跨项目通用。
-> 用法：复制下面「提示词正文」，把 `<项目名>` 和 `<具体主题>` 换成当次内容即可。
+> Lives at the repository root as `PROMPT.md`. Shared across all labs.
+> Usage: copy the **Prompt Body** below, replace `<project-name>` and `<topic>`.
 
-> ⚠️ **本机命令约定**：当前机器**只认 `python` 命令，没有 `python3`**。
-> 所有脚本与文档示例一律用 `python xxx.py`，不要写 `python3`。
-> （已统一把历史 `python3` 全文替换成 `python`；shebang 也改成了 `#!/usr/bin/env python`。）
+> ⚠️ **Language convention (mandatory)**
+> - **This prompt and all repository-level files are in English** (root `README.md`,
+>   `PROMPT.md`, commit messages, GitHub About/Topics).
+> - **Each lab's three documents (`SCRIPT.md` / `CLI.md` / `GUI.md`) are written in Chinese** —
+>   they are teaching material for the author's own study loop; technical terms,
+>   tool names, file paths, and pasted tool output stay in their original language.
+> - Commit messages follow the English convention even when they describe
+>   Chinese-language lab docs (e.g. `docs(ajiami): ...`).
 
-> ⚠️ **文档写作约定**
-> 1. **先脚本后命令后图形**：章节顺序 = 原理 → 脚本跑通 → 命令行复现 → 图形工具看懂。先用自动化给出正确答案，
->    再拆解为什么；不要一上来就铺字节级步骤。
-> 2. **命令必须完整**：禁止 `...apk`、`xxx.sh` 这类省略占位，一律写成可直接复制执行的完整命令。
-> 3. **命令放代码块**：命令一律放进 ``` 代码块，不塞进表格单元格；表格只承载
->    「作用 / 参数含义 / 判读 / 依赖」这类说明性内容。
-> 4. **命令解释不能只给一行**：每条命令配「作用一句话 + 参数逐项说明 + 真实输出片段 +
->    逐行怎么读 + 失败怎么判」；输出片段必须实跑后贴入，不得凭印象编造。
-> 5. **输出片段里不出现绝对路径**：贴实测输出时把工程根以上的路径裁掉，只保留相对路径。
-> 6. **命令必须自带解释**：代码块里每条命令都要配行内注释——「这条做什么 / 关键参数是什么」+
->    `# => 预期输出或结论`，让人不跑也能看懂；命令块后面再补一段「这几条命令分别干什么」。
->    示例（照这个写）：
+> ⚠️ **Local command convention**: this machine **has `python`, no `python3`**.
+> All scripts and doc examples use `python xxx.py`. Shebangs use `#!/usr/bin/env python`.
+
+> ⚠️ **Documentation-writing conventions**
+> 1. **Script → CLI → GUI**: chapter order = theory → script run → CLI reproduction →
+>    GUI understanding. Give the correct answer via automation first, then explain why;
+>    do not open with byte-level steps.
+> 2. **Commands must be complete**: no `...apk` / `xxx.sh` placeholders — every command
+>    must be copy-paste executable as written.
+> 3. **Commands live in code blocks**, never inside table cells; tables carry only
+>    explanatory content (purpose / parameter meaning / interpretation / dependency).
+> 4. **Command explanations are never one-liners**: each command gets
+>    purpose + per-parameter explanation + real output excerpt + line-by-line reading
+>    + failure criteria. Output excerpts must come from actual runs, never memory.
+> 5. **No absolute paths in pasted output**: trim anything above the lab root;
+>    keep relative paths only.
+> 6. **Every command carries its own explanation**: inline comments in the block
+>    (what it does / key parameters) + `# =>` expected output, followed by a
+>    "what these commands do" paragraph after the block.
+>    Example (follow this style):
 >    ```bash
->    # ① 判定：这是哪一代壳？（只做结构体检，不修改任何文件）
+>    # ① Detection: which generation is this packer? (read-only structural check)
 >    python tools/detect.py samples/apks/app_packed_v1.apk
->    #   => 结论：已加固：DEX 整体加密型（一代）
+>    #   => verdict: hardened — whole-DEX encryption (generation 1)
 >
->    # ② 脱壳：--pristine 给黄金样本，解完立刻比对
+>    # ② Unpack: --pristine supplies the golden sample for immediate comparison
 >    python tools/unpack_v1.py samples/apks/app_packed_v1.apk analysis_output/out.dex --pristine samples/dex/classes_orig.dex
->    #                    └ 输入样本            └ 输出     └ 黄金样本 => 与黄金…完全一致 ✓
+>    #                    └ input             └ output   └ golden => byte-identical to golden ✓
 >    ```
 
-> ⚠️ **验证与认知边界约定**（硬性 —— 由 ajiami 项目一次真实误报事故沉淀）
-> 自造样本的项目天然有「循环论证」风险：**样本 = 需求 = 测试集**，检测器在自己设计的样本上必然全对。
-> 所以交付「判定类 / 检测类」工具前，必须做完下面 4 件事：
-> 1. **必须有负样本，且不能全是自造的**。除了验证"能检出 X"，还必须验证
->    "对不是 X 的输入不会误判"。没有外部负样本时，至少用**手工构造的反例**跑一遍
->    （照真实 App 的常见形态造：多 dex / AndroidX 组件 / 大 SO / 高熵资源 / 上万方法）。
-> 2. **每条判据都要做「证伪式」反问**：什么样的**正常**输入也会触发它？
->    会被正常输入触发就只能说"可疑"，不能直接定性。宁可输出「疑似」也不要输出确定结论。
-> 3. **结论不许说全称否定**。兜底不许写"未加壳 / 未加固 / 没问题"，
->    必须写「**未见已知特征（不等于没有）**」，并打印本工具**不覆盖**的方案清单（认知边界）。
->    过度声称（把正常样本判成壳）与过度信任（把不认识的方案判成安全）是两种对称的失败，只防一边不够。
-> 4. **每个"只处理第一个 / 只看主文件"的逻辑都要显式处理**：要么泛化到全部，
->    要么检测到多余项就**响亮告警**（列出被忽略的项 + 后果），严禁静默产出残缺结果。
-> 已知典型坑：① `classesN.dex` 多 dex（只看主 dex 会把正常 App 判成壳、
-> 也会把多 dex 样本只还原一部分却照常报成功）；② 把"业务包名"写死成练习样本的包名
-> （对真实 App 恒不成立 → 判据退化为恒真或恒假）。
+> ⚠️ **Verification & cognitive-boundary conventions** (mandatory — distilled from a
+> real false-positive incident in the ajiami lab)
+> Self-built-sample projects carry an inherent circular-reasoning risk:
+> **sample = spec = test set**; a detector is trivially correct on samples designed for it.
+> Before delivering any detection/verdict tool, complete all four:
+> 1. **Negative samples are mandatory and must not all be self-built**. Besides "detects X",
+>    verify "does not misfire on non-X inputs". Without external negatives, at least
+>    hand-construct counter-examples shaped like real apps: multi-dex / AndroidX
+>    components / large SO / high-entropy assets / tens of thousands of methods.
+> 2. **Falsification question per criterion**: what *normal* input would also trigger it?
+>    If a normal input can trigger it, the verdict is "suspected", never definitive.
+> 3. **No universal negation in conclusions**. The fallback must read
+>    "**no known hardening signature observed (≠ none)**" plus an explicit list of
+>    schemes the tool does **not** cover (cognitive boundary). Over-claiming (normal
+>    sample flagged as packed) and over-trusting (unknown scheme flagged as safe) are
+>    symmetric failures; guarding only one side is not enough.
+> 4. **Every "only-first / only-main-file" logic must be explicit**: either generalize to
+>    all items, or emit a loud warning on extras (listing what was ignored and the
+>    consequence). Silent partial results are forbidden.
+> Known traps: ① `classesN.dex` multi-dex (main-dex-only logic flags normal apps as
+> packed, and partially restores multi-dex samples while still reporting success);
+> ② hard-coding the practice lab's package name as "the business package"
+> (never true for real apps → the criterion degenerates to always-true/always-false).
 
-> ⚠️ **零绝对路径约定**（硬约束）
-> 工程里**任何文件**（脚本 / 构建配置 / 源码 / 文档 / 生成产物）都不得出现
-> `D:\...`、`C:\Users\...`、`/d/...` 这类具体盘符或用户目录路径。
-> 所有外部依赖一律按四档解析：**命令行参数 > 环境变量 > 项目配置（`build/env.sh`，可选） > 自动探测**；
-> 四档都拿不到就**报错并告诉用户**：缺什么、通常装在哪、该加 PATH 还是设环境变量、用哪个参数能临时覆盖。
-> 项目根目录一律用脚本自身位置推导（bash：`$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)`；
-> python：`os.path.dirname(os.path.abspath(__file__))`），不要依赖当前工作目录。
+> ⚠️ **Zero absolute paths** (hard constraint)
+> No file in the repo (scripts / build config / source / docs / generated artifacts)
+> may contain machine paths like `D:\...`, `C:\Users\...`, `/d/...`.
+> All external dependencies resolve through four tiers, in order:
+> **CLI argument > environment variable > project config (`build/env.sh`, optional) >
+> auto-detection**. If all four fail, **error out and tell the user**: what is missing,
+> where it is normally installed, whether to add PATH or set an env var, and which
+> CLI flag overrides it for one run.
+> Project roots are always derived from the script's own location
+> (bash: `$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)`;
+> python: `os.path.dirname(os.path.abspath(__file__))`) — never from the working directory.
 >
-> **唯一例外**：文档里的 `cd` 示例可以直接写本机实际路径（如 `cd <项目名>`），
-> 图的是能复制了直接执行；但脚本 / 构建配置 / 生成产物里一律不允许。
+> **Sole exception**: `cd` examples in docs may use the real local path
+> (so they can be copy-pasted); scripts / build config / generated artifacts never may.
 
-> ⚠️ **GitHub 提交与部署约定**（硬性 —— 本仓库公开，作为作品集/分享）
-> 1. **仓库拓扑**：本仓库是「加固练习工程 + 本提示词」的 monorepo；若某子项目自带 `.git`
->    （如混淆方向的 `ollvm/`），必须在根 `.gitignore` 用 `/<子目录>/` 排除，绝不与主仓库混进同一棵历史。
-> 2. **提交纪律**：根目录 `git init`；按「基础设施 → 各工程」拆分提交，不要一锅端——
->    先提交 `README.md`（仓库总览）/ `LICENSE` / `.gitignore` / `PROMPT.md`，再分别提交每个工程（每个工程含 `SCRIPT.md` + `CLI.md` + `GUI.md`）；
->    提交信息用「类型(范围): 一句话」风格（如 `feat(360jiagu): ...`）。
-> 3. **路径脱敏**：公开前必须把 `D:\...`、`C:\Users\...` 这类真实盘符/用户目录路径
->    改成相对或通用写法（本提示词的「零绝对路径约定」已覆盖，提交前再全盘复查一遍）。
-> 4. **不提交的东西**：第三方/本地二进制（如 UPX 打包器 `*.exe`）与签名 `*.keystore`
->    一律不进仓库，也不要在文档里解释它们。**只保留 `build/*.sh` / `build/*.py` /
->    `build/env.sh` 作为工具脚本**，生成物目录用 `**/build/<name>/` 忽略
->    （坑：`build/v1/` 只匹配根级 `build/v1/`，匹配不到 `ajiami/build/v1/`，
->    必须用 `**/build/<name>/` 才能忽略各工程下的生成子目录）。
-> 5. **LICENSE**：公开仓库用 MIT；版权行署名 = 本机 git 身份（`git config user.name`）。
-> 6. **GitHub 元数据（公开必填）**：
->    - **About 描述**：写**英文**一句话定位（建模说明 + 方法特征），例如
+> ⚠️ **GitHub publishing conventions** (mandatory — this repo is public, as a portfolio)
+> 1. **Repo topology**: this repository is a monorepo of "hardening labs + this prompt".
+>    If a sub-project carries its own `.git` (e.g. the obfuscation-topic `ollvm/`),
+>    exclude it in the root `.gitignore` with `/<subdir>/`; never mix histories.
+> 2. **Commit discipline**: root `git init`; commit in "infrastructure → per-lab" batches:
+>    `README.md` (repo overview) / `LICENSE` / `.gitignore` / `PROMPT.md` first, then one
+>    commit per lab (each containing `SCRIPT.md` + `CLI.md` + `GUI.md`).
+>    Message style: `type(scope): one line` (e.g. `feat(360jiagu): ...`).
+> 3. **Path scrubbing**: before publishing, re-scan the whole repo for real drive/user
+>    paths and rewrite to relative or generic forms.
+> 4. **Never committed**: third-party/local binaries (e.g. UPX `*.exe`) and signing
+>    `*.keystore` — not in the repo, not explained in docs. Keep only `build/*.sh` /
+>    `build/*.py` / `build/env.sh` as tooling; ignore generated dirs with
+>    `**/build/<name>/` (trap: `build/v1/` matches only the root-level dir and misses
+>    `ajiami/build/v1/` — the `**/` form is required).
+> 5. **LICENSE**: MIT for public repos; copyright line = the local git identity.
+> 6. **GitHub metadata (required when publishing)**:
+>    - **About**: one English sentence (modeling + method), e.g.
 >      `Educational Android unpacking & packer-hardening labs — self-built, evidence-based, deterministic-first reverse-engineering study materials.`
->    - **Topics**：英文小写标签，至少覆盖 `android` `reverse-engineering` `unpacking`
->      `packers` `dex` `elf` `ndk` `anti-tamper` `static-analysis` `educational`。
-> 7. **推送**：本机 `gh` 版本不支持 `gh repo create --topic` / `--branch`。
->    建仓库+推送用 `gh repo create <name> --public --description "..." --source . --push`
->    （自动建 `origin` 并推当前分支）；Topics 走 REST：把 `{"names":[...]}` 写进 JSON 文件后执行
+>    - **Topics**: lowercase English, at least `android` `reverse-engineering` `unpacking`
+>      `packers` `dex` `elf` `ndk` `anti-tamper` `static-analysis` `educational`.
+> 7. **Pushing**: the local `gh` does not support `gh repo create --topic/--branch`.
+>    Create+push with `gh repo create <name> --public --description "..." --source . --push`;
+>    topics go through REST: write `{"names":[...]}` into a JSON file, then
 >    `gh api repos/<owner>/<repo>/topics -X PUT -H "Accept: application/vnd.github.mercy-preview+json" --input <file>`
->    （`-F names='[...]'` 会被当成字符串报 422，必须用 `--input` 传真 JSON）。
+>    (`-F names='[...]'` is parsed as a string and 422s — real JSON via `--input` is required).
 
 ---
 
-## 提示词正文
+## Prompt Body
 
 ```
-在仓库根目录下新建文件夹 <项目名>，做一个「<具体主题>」练习工程。
-主题范围限定：Android 壳与脱壳（UPX 及变种、压缩壳、内存 dump、OEP、ELF Fix、
-DEX 整体加密、类抽取、加固判定）。
-不适用的主题：代码混淆 / 字符串保护 / VMP 教学这类不属于「壳与脱壳」的项目，
-不要用本提示词，单独另写。
-要求如下：
+Create a folder <project-name> under the repository root: a practice lab for
+「<topic>」.
+Topic scope: Android packers and unpacking (UPX and variants, compression shells,
+memory dump, OEP, ELF Fix, whole-DEX encryption, class extraction, hardening detection).
+Out of scope: code obfuscation / string protection / VMP teaching — do not use this
+prompt for those; write a separate one.
+Requirements:
 
-1. 文档（最重要）
-   - 全部知识点写进三份平行文档（同一套章节骨架，一一对应），不要再建 docs/ 或其他 md 文档；项目根 `README.md` 不再需要。
-       `SCRIPT.md` —— 脚本路线：`tools/` 下本仓 Python 工具实跑（detect / unpack / verify 等）。
-       `CLI.md`   —— 命令行路线：unzip / aapt2 / xxd / readelf / sha256sum / cmp / apkutil(熵)
-                     等通用命令逐字节复现每一步。
-       `GUI.md`   —— 图形工具路线：jadx / IDA / Ghidra / 010 Editor / GDA / JEB / binwalk(熵曲线)
-                     / apkid 等工具在对应步骤的操作与判读。
-   - **固定目录布局（硬性，照抄，不自创）**——每个工程根目录**只有**以下条目，
-     新增任何目录/平铺文件前先检查是否落进下面某一格，落不进就不该建：
+1. Documents (top priority)
+   - All knowledge goes into three parallel documents (one shared chapter skeleton,
+     section-for-section): do not create docs/ or any other markdown file;
+     no per-lab README.md.
+       `SCRIPT.md` — script route: live runs of this repo's Python tools in `tools/`
+                     (detect / unpack / verify, etc.).
+       `CLI.md`   — command-line route: byte-level reproduction of every step with
+                    generic commands (unzip / aapt2 / xxd / readelf / sha256sum / cmp /
+                    apkutil (entropy), etc.).
+       `GUI.md`   — graphical-tool route: jadx / IDA / Ghidra / 010 Editor / GDA / JEB /
+                    binwalk (entropy curve) / apkid — operations and interpretation
+                    at the corresponding steps.
+     **The three lab documents are written in Chinese** (see the language convention
+     at the top of this file); tool output and paths stay as-is.
+   - **Fixed directory layout (mandatory — copy verbatim, do not invent)**. The lab
+     root contains **only** the entries below. Before creating any new directory or
+     flat file, check it fits one slot; if it does not fit, it must not be created:
        ```
-       <项目名>/
-       ├── SCRIPT.md / CLI.md / GUI.md   # 唯一的三份文档，工程根不再有其他 md
-       ├── samples/        # 分析对象（四栏按用：apks / dex / payloads / native，SO 工程用 so/）
-       │                    # 一切"被分析的文件"只住这里，禁止平铺到工程根
-       ├── pristine/       # samples/ 的 sha256 基线备份（reset 的还原源）
-       ├── analysis_output/ # 练习产物（脱壳结果、报告、jadx 输出、内存 dump）只写这里
-       ├── src/            # 业务样本源码（.c/.cpp/.java/.xml 全部在此，含锚点）
-       ├── shell/          # 壳源码（仿壳项目才有；纯 UPX 类工程不建）
-       ├── neg/            # 负样本源码（有对抗式负样本的工程才有）
-       ├── vmp/            # VMP 教学样本源码（有 VMP 样本的工程才有）
-       ├── tools/          # 本仓 Python 工具 + 锚点清单（anchors.txt）+ 工具二进制（gitignore）
-       ├── build/          # 构建脚本（*.sh / *.py / env.sh / env.sh.example），不放生成物
-       ├── app/            # 可运行 App 工程（动态验证"脱壳后能跑"时才有；完整 gradle 结构）
-       ├── frida/          # 动态 hook 脚本（走动态路线的工程才有；.js 按样本分文件）
-       └── logs/           # 实操日志（可留空；不作为文档引用的依据）
+       <project-name>/
+       ├── SCRIPT.md / CLI.md / GUI.md   # the only three docs; no other md at lab root
+       ├── samples/        # analysis targets (four bins by content: apks/dex/payloads/
+       │                    # native; SO labs use so/ instead of apks/)
+       │                    # all "analyzed files" live here — never flat at lab root
+       ├── pristine/       # sha256 baseline backup of samples/ (reset restore source)
+       ├── analysis_output/ # practice artifacts only (unpack results, reports, jadx
+       │                    # output, memory dumps) — wiped by reset
+       ├── src/            # business-sample source (.c/.cpp/.java/.xml, with anchors)
+       ├── shell/          # packer-shell source (modeled-shell labs only)
+       ├── neg/            # negative-sample source (only if adversarial negatives exist)
+       ├── vmp/            # VMP teaching-sample source (only if a VMP sample exists)
+       ├── tools/          # this repo's Python tools + anchor list (anchors.txt) +
+       │                    # tool binaries (gitignored)
+       ├── build/          # build scripts (*.sh / *.py / env.sh / env.sh.example) —
+       │                    # no generated artifacts
+       ├── app/            # runnable app project (only when dynamic verification of
+       │                    # "unpacked output still runs" is in scope; full gradle layout)
+       ├── frida/          # dynamic-route hook scripts (dynamic-route labs only;
+       │                    # one .js per sample)
+       └── logs/           # practice logs (may stay empty; never a documentation source)
        ```
-       布局规则：
-       ① **样本必须进 `samples/`**：.so/.apk/dex/payload 一律住栏内子目录，
-         工程根**禁止**出现 `libtarget_*.so`、`*.apk` 这类平铺样本。
-         四栏按内容落位：`apks/`=APK 分析对象，`dex/`=黄金/壳/抽取态/解出 dex，
-         `payloads/`=加密载荷/侧表/诱饵/策略表，`native/`=壳的附属 SO（壳的 native
-         组件、多 SO 执行链的中间 SO——不是被保护对象也不是 payload 的第三类 SO）；
-         纯 SO 工程用 `so/` 栏代替 `apks/` 栏，其余同。
-       ② **源码必须进 `src/`（或 shell/ / neg/ / vmp/）**：工程根禁止散落 `.c/.java/.xml`。
-       ③ **产物只进 `analysis_output/`**：脱壳输出、dump、报告、jadx 反编译目录、
-         adb 拉取的内存镜像（`analysis_output/dumps/`）都写这里，用后可整体清空（reset 会清）。
-       ④ **可选目录按需**：shell/ / neg/ / vmp/ / app/ / frida/ 只在对应样本/路线存在时建；
-         没有就不建空目录。
-       ⑤ **工具二进制（upx.exe 等）放 `tools/` 并被 .gitignore 忽略**；多版本并存时
-         按版本命名（`tools/upx396.exe`、`tools/upx521.exe`），文档引用哪个写哪个；
-         `samples/` `pristine/` 里的样本二进制是要提交的（它们是练习的"数据"，体积可控）。
-   - 固定章节骨架（照抄，不要自创编号）：三份文档共用同一套章节骨架，区别只在「手法」——
-       SCRIPT.md 走脚本路线（本仓 tools/ 的 Python 代码实跑），
-       CLI.md 走命令行路线（通用命令逐字节复现），
-       GUI.md 走图形工具路线（jadx / IDA / 010 Editor 等的操作与判读）。
-       概述：一句话定位 / 为什么自造样本（建模说明）/ 样本清单表 / 三分钟跑一遍（最小闭环命令 4~8 行）
-       工程结构 / 样本清单（四栏按用：apks / dex / payloads / native；SO 工程 so/）
-       知识点：每节固定五件套 —— 是什么 / 怎么看（结构特征+阈值）/ 验证手段 /
-                  实测输出 / 失效边界；有样本标 [可验证]，纯理论标 [知识框架]
-       判定：特征对照表 + 实跑输出 + 阈值设计踩过的坑
-       脱壳：三份文档各按自己的手法还原，逐字节对照
-       验证判据（体积 / 锚点 / sha256 / 差异字节 + 首个差异偏移）
-       决策流程（决策树）
-       反复练习：pristine/ + reset_lab.py（status / restore / backup）
-       踩坑（工具链 / 环境 / 阈值 / 误判 / 失效边界）
-   - 三路线分工原则：**判定靠 SCRIPT/CLI（可量化、可写进判据），看懂靠 GUI
-     （jadx 出 Java、IDA 出调用链、binwalk 出熵曲线）**。同一步骤在三份文档中各展示
-     自己手法的版本，不互相复制结论；GUI 工具的输出（反编译代码、熵曲线图、十六进制视图）
-     用文字描述关键判读点 + 必要的真实摘录，不让读者装了工具却不知道看什么。
-   - 每一章都要写清「做什么 / 应该看到什么 / 为什么」，不要只给结论。
-   - 命令写法：完整可复制（禁止 `...` 占位）、放进代码块（不放表格）、
-     并配「作用 + 参数逐项说明 + 真实输出片段 + 逐行判读 + 失败判据」。
-     输出片段必须先把命令实跑一遍再贴进文档，不要凭印象写。
-   - 命令自带解释：块内每条命令配行内注释（做什么 / 关键参数）+ `# =>` 预期输出或结论，
-     命令块后再写一段「这几条命令分别干什么」；让人不跑脚本也能看懂每一步在做什么。
+       Layout rules:
+       ① **Samples must live in `samples/`**: .so/.apk/dex/payload all inside bins;
+         the lab root must never contain flat samples like `libtarget_*.so`, `*.apk`.
+         Bins by content: `apks/` = APK analysis targets, `dex/` = golden/shell/
+         extracted-state/unpacked dex, `payloads/` = encrypted payloads / side tables /
+         decoys / policy tables, `native/` = the packer's auxiliary SOs (shell native
+         components, multi-SO-chain intermediates — the third kind of SO that is
+         neither protected target nor payload). Pure-SO labs replace the `apks/` bin
+         with `so/`; the rest is the same. Do not create empty bins for absent content.
+       ② **Source must live in `src/` (or shell/ / neg/ / vmp/)**: no loose
+         `.c/.java/.xml` at the lab root.
+       ③ **Artifacts go only to `analysis_output/`**: unpack output, dumps, reports,
+         jadx trees, adb-pulled memory images (`analysis_output/dumps/`) — all here,
+         all clearable by reset.
+       ④ **Optional dirs on demand**: shell/ / neg/ / vmp/ / app/ / frida/ exist only
+         when the corresponding sample/route exists; no empty placeholders.
+       ⑤ **Tool binaries (upx.exe etc.) go to `tools/` and are gitignored**; multiple
+         versions coexist version-named (`tools/upx396.exe`, `tools/upx521.exe`), and
+         each doc references whichever it actually ran. Binaries under `samples/` and
+         `pristine/` *are* committed (they are the practice data, size-bounded).
+   - **Fixed chapter skeleton (copy verbatim, do not invent numbering)**: the three
+     documents share one skeleton and differ only in method —
+       SCRIPT.md: this repo's tools/ Python code,
+       CLI.md: generic commands,
+       GUI.md: graphical tools.
+       Overview: one-line positioning / why self-built samples (modeling note) /
+                 sample-list table / three-minute run (4–8 command minimal loop)
+       Lab layout / sample list (four bins: apks / dex / payloads / native; SO: so/)
+       Knowledge points: fixed five-part set per section — what it is / how to see it
+                 (structural feature + threshold) / verification means / real output /
+                 failure boundary; [verifiable] when a sample exists,
+                 [knowledge framework] for pure theory
+       Detection: feature comparison table + live run output + threshold-design pitfalls
+       Unpacking: each document reproduces with its own method; byte-for-byte comparison
+       Verification criteria (size / anchors / sha256 / diff bytes + first-diff offset)
+       Decision flow (decision tree)
+       Repeatable practice: pristine/ + reset_lab.py (status / restore / backup)
+       Pitfalls (toolchain / environment / thresholds / false positives / failure boundaries)
+   - Route division: **verdicts come from SCRIPT/CLI (quantifiable, criterion-grade);
+     understanding comes from GUI** (jadx yields Java, IDA yields call graphs,
+     binwalk yields entropy curves). The same step shows its own method's version in
+     each document — no cross-copying conclusions. GUI outputs (decompiled code,
+     entropy curves, hex views) are described via key reading points + necessary real
+     excerpts; never leave the reader with a tool and no idea what to look at.
+   - Every chapter states "what to do / what you should see / why" — conclusions alone
+     are not acceptable.
+   - Command style: complete and copy-pasteable (no `...` placeholders), in code blocks
+     (not tables), each with purpose + per-parameter notes + real output excerpt +
+     line-by-line reading + failure criteria. Excerpts must come from actual runs.
+   - Self-explaining commands: inline comments per command (what / key parameters) +
+     `# =>` expected output, plus a "what these commands do" paragraph after each block.
 
-2. 样本（必须可复现）
-   - 样本目录固定四栏：`samples/apks/`（APK 分析对象）、`samples/dex/`（黄金/壳/抽取态/解出 dex）、
-     `samples/payloads/`（加密载荷 / 侧表 / 诱饵 / 策略表）、`samples/native/`
-     （壳的附属 SO：壳的 native 组件、多 SO 执行链的中间 SO）；脚本与文档一律用四栏相对路径，
-     不把不同类文件平铺在 `samples/` 根。
-     SO 类工程（无 APK）用 `samples/so/`（.so 分析对象）代替 `apks/` 栏，其余栏同；
-     没有对应内容的栏不建空目录。
-     **禁止把 .so/.apk 样本平铺在工程根**。
-   - 用本机 NDK 的 clang 从源码编译真实 Android .so，保证加壳前后出自同一份源码、
-     代码与字符串一致，便于脱壳后逐字节对照。
-   - 至少产出三种：原始 .so、标准加壳样本、变种样本（变种可通过改写特征生成）。
-   - 源码里放置明确的「分析锚点」（特征字符串 / JNI_OnLoad / RegisterNatives / 业务函数），
-     用来验证脱壳是否真的成功。
+2. Samples (must be reproducible)
+   - Four fixed bins under `samples/`: `samples/apks/` (APK analysis targets),
+     `samples/dex/` (golden / shell / extracted-state / unpacked dex),
+     `samples/payloads/` (encrypted payloads / side tables / decoys / policy tables),
+     `samples/native/` (packer auxiliary SOs: shell native components,
+     multi-SO-chain intermediates). Scripts and docs always use these bin-relative
+     paths; never mix file kinds at the `samples/` root. SO labs (no APK) replace the
+     `apks/` bin with `samples/so/` (.so analysis targets); absent bins are not created.
+     **Flat .so/.apk samples at the lab root are forbidden.**
+   - Compile real Android .so from source with the local NDK clang, so packed and
+     unpacked outputs derive from the same source (identical code and strings) and
+     compare byte-for-byte.
+   - Produce at least three: original .so, standard packed sample, variant sample
+     (variants may be generated by rewriting features).
+   - Place explicit analysis anchors in the source (signature strings / JNI_OnLoad /
+     RegisterNatives / business functions) to verify unpacking success.
 
-3. 判定（禁止偷懒）
-   - 判定「是否加壳 / 是什么壳 / 是不是变种」必须基于结构特征：
-     节区表数量、熵、PT_LOAD 解压缓冲(filesz vs memsz)、入口位置、
-     内存/文件体积比、尾部结构字段等。
-   - 禁止按文件名、或只靠某一个字符串特征下结论。
-   - 给出可量化的特征对照表（未加壳 vs 加壳的实测数值），
-     并记录错误的判据/阈值设计（为什么错、怎么改）。
+3. Detection (no shortcuts)
+   - Verdicts ("packed? which packer? variant?") must rest on structural features:
+     section-table count, entropy, PT_LOAD decompression buffer (filesz vs memsz),
+     entry position, memory/file size ratio, trailer fields.
+   - Concluding from file names or a single string feature is forbidden.
+   - Provide a quantified feature comparison table (unpacked vs packed, measured
+     values) and record wrong criterion/threshold designs (why wrong, how fixed).
 
-4. 脚本 / 命令行 / 图形工具（先脚本后命令后图形）
-   - 必须给出可手工复现的步骤：定位到具体字节偏移、能用十六进制编辑器（010 Editor / HxD）
-     自己改、每条命令与每步 GUI 操作的作用都要说明。
-   - 脚本只能是这些步骤的自动化，不能是唯一答案；GUI 工具（jadx / IDA 等）用于看懂
-     结构与调用关系，不替代量化判定。
-   - 要写清手法的前提与失效条件：什么情况下必须改用动态/内存路线。
+4. Script / CLI / GUI (script first, then CLI, then GUI)
+   - Manual reproduction must exist: exact byte offsets, editable with a hex editor
+     (010 Editor / HxD); every command and every GUI step explained.
+   - Scripts only automate those steps — never the sole answer. GUI tools (jadx / IDA)
+     serve understanding of structure and call relations; they do not replace
+     quantified verdicts.
+   - State each method's preconditions and failure conditions: when the dynamic /
+     memory route becomes mandatory.
 
-5. 回退（支持反复练习）
-   - 提供 reset 工具脚本：原始样本备份到 pristine/（含 sha256 清单），
-     支持 status / restore。
-   - restore 要还原样本文件 + 删除练习产物 + 清空分析输出目录。
+5. Reset (repeatable practice)
+   - Provide a reset tool: samples backed up to pristine/ (with sha256 manifest),
+     supporting status / restore.
+   - restore must restore sample files + remove practice artifacts + clear the
+     analysis output directory.
 
-6. 验证与踩坑
-   - 给出可量化的验证判据（体积 / 锚点 / 字节对比），并实际跑通验证一次，
-     把真实输出写进文档。
-   - 记录本环境踩到的坑（工具限制、报错、误判），不要只写理想情况。
+6. Verification & pitfalls
+   - Quantified verification criteria (size / anchors / byte diff), actually run
+     once, with the real output pasted into the docs.
+   - Record pitfalls hit in this environment (tool limitations, errors, false
+     positives) — never the ideal path only.
 
-7. 路径与工具全部外置（重要）
-   - 任何外部工具（UPX / NDK / SDK / aapt2 / java / python）都不能写死成某个绝对路径。
-   - 统一四档解析，按优先级：
-       ① 命令行参数（--upx / --ndk / --aapt2 / --root / --python）
-       ② 环境变量（UPX / NDK_ROOT / ANDROID_NDK_HOME / ANDROID_HOME / JAVA_HOME / PYTHON）
-       ③ 项目配置 build/env.sh（可选，存在才 source；同时提供 build/env.sh.example
-          作为模板，模板里只有占位与说明，不含真实路径）
-       ④ 自动探测（PATH、SDK/NDK 标准布局、版本号取最新）
-   - 四档都拿不到时，**主动告诉用户**：缺什么、通常装在哪、是加 PATH 还是设环境变量、
-     用哪个命令行参数能临时覆盖；不要默默假设它一定存在。
-   - 工程根目录由脚本自身位置推导，不得写死；构建产物里的路径一律输出相对路径。
+7. Paths and tools fully externalized (important)
+   - No external tool (UPX / NDK / SDK / aapt2 / java / python) may be hard-coded
+     to an absolute path. Four-tier resolution, in priority order:
+       ① CLI arguments (--upx / --ndk / --aapt2 / --root / --python)
+       ② Environment variables (UPX / NDK_ROOT / ANDROID_NDK_HOME / ANDROID_HOME /
+          JAVA_HOME / PYTHON)
+       ③ Project config build/env.sh (optional, sourced only if present; ship
+          build/env.sh.example as the template — placeholders and notes only,
+          no real paths)
+       ④ Auto-detection (PATH, standard SDK/NDK layouts, newest version wins)
+   - If all four tiers fail, **tell the user**: what is missing, where it usually
+     installs, whether to fix PATH or an env var, which flag overrides it for one
+     run. Never silently assume a tool exists.
+   - The lab root is derived from the script's own location, never hard-coded;
+     build artifacts print relative paths only.
 
-8. 零绝对路径（硬性）
-   - 源码、构建脚本、Python 工具、文档、生成产物（*.json / *.txt 报告）中
-     一律不得出现盘符路径（`D:\`、`C:\`）或用户目录（`/c/Users/`、`/d/`）。
-   - 文档里提到工程位置统一写「工程根目录（本工程文档所在目录）」，
-     示例命令用相对路径。
-   - **唯一例外**：文档里的 `cd` 示例可以写本机实际路径（便于复制执行），
-     但脚本 / 构建配置 / 生成产物里绝对不能有。
-   - 交付前自查：全库搜索 `:\` 与 `/Users/`，除文档里的 `cd` 示例与历史产物外应为 0 命中；
-     命中项要么外置化，要么加入 reset 清理范围并重新生成。
+8. Zero absolute paths (hard)
+   - No drive paths (`D:\`, `C:\`) or user dirs (`/c/Users/`, `/d/`) in source,
+     build scripts, Python tools, docs, or generated artifacts (*.json / *.txt).
+   - Docs refer to the lab location as "the lab root (the directory holding this
+     lab's documents)"; example commands use relative paths.
+   - **Sole exception**: `cd` examples in docs may carry the real local path;
+     scripts / build config / generated artifacts never may.
+   - Pre-delivery self-check: repo-wide search for `:\` and `/Users/` must be
+     clean except documented `cd` examples and historical artifacts; any hit is
+     either externalized or added to the reset cleanup and regenerated.
 
-9. 判定工具的验证纪律（硬性，专治循环论证）
-   - 严禁「只拿自己造的样本验证自己做的检测器」：必须补负样本 / 反例，
-     并逐条验证每个判据在「正常输入」上不会被误触发。
-   - 结论阶梯要**证据互相印证**，禁止单一判据直接定性（例如仅"某类缺失"不足以定代次）。
-   - 兜底必须写「未见已知特征（不等于没有）」，并显式列出本工具不覆盖的方案清单（认知边界）。
-     SO 类项目至少须点名 SO VMP / 非汇聚 VMP / 字符串加密（具体见规则 11），均须动态 trace 才能定性。
-   - 任何「只处理第一个 dex / 只看主文件 / 只取第一条」的逻辑：要么泛化到全部，
-     要么检测到多余项就响亮告警（列出被忽略项与后果），绝不静默产出残缺结果。
-   - 三份文档的「踩坑 / 失效边界」章必须记录：哪条判据在什么真实场景下会误报、根因是什么、怎么改的。
+9. Verification discipline for detection tools (hard — cures circular reasoning)
+   - "Validating your own detector only on your own samples" is forbidden: negative
+     samples / counter-examples are mandatory, with each criterion checked against
+     normal inputs for false triggering.
+   - The conclusion ladder requires **mutually corroborating evidence**; a single
+     criterion may never classify alone (e.g. one missing-class signal does not
+     establish a generation).
+   - The fallback must read "no known signature observed (≠ none)" plus an explicit
+     list of uncovered schemes (cognitive boundary). SO labs must name at least
+     SO VMP / non-hub-converging VMP / string encryption (see rule 11) — all
+     dynamic-trace-only.
+   - Any "first dex only / main file only / first entry only" logic: generalize to
+     all, or warn loudly on extras (listing ignored items and consequences).
+   - The pitfalls chapter of all three documents must record: which criterion
+     false-fired in which real scenario, root cause, and the fix.
 
-10. 必须交付「负样本 + 回归断言」，不只是负样本（硬性）
-   - 必须自己写一个/若干【对抗式负样本】：**干净、但几乎能触发判据**。
-     一个负样本只有当它"几乎能触发某条规则"时才有价值；再做一个单 dex 的干净样本毫无作用。
-     典型陷阱要照真实世界的常见形态埋：多 dex（组件类放次级 dex）、合法但高熵的资源文件、
-     相对类名简写（`.MainActivity`）、正常引用 DexClassLoader、正常 .so。
-   - 负样本必须**从源码可复现**（放进仓库自己编），不能丢一个来历不明的二进制；
-     纳入 pristine/ 基线，可被 reset 管理。
-   - 必须配**双向断言脚本**（如 check_negatives.py）：
-       正向：真样本必须被判成对应代次（防"为消误报改过头"把真壳漏掉）
-       负向：干净样本绝不允许被判成"已加固"，且不得命中指定的误报判据
-     两条都要有，只做一边必错。脚本失败要红字 + 非 0 退出。
-   - 记住：**没有断言的负样本只是装饰** —— 它的价值在于能被跑起来，不在于它存在。
+10. Adversarial negative samples + regression assertions — not just samples (hard)
+   - Build one or more **adversarial negatives**: clean, yet nearly triggering the
+     criteria. A negative is valuable only if it nearly trips a rule; another clean
+     single-dex sample is worth nothing. Embed real-world-shaped traps: multi-dex
+     (component classes in secondary dex), legitimate high-entropy assets, relative
+     class shorthand (`.MainActivity`), legitimate DexClassLoader use, normal .so.
+   - Negatives must be **reproducible from source** (built in this repo, not mystery
+     binaries), tracked in the pristine/ baseline, and reset-managed.
+   - A **two-way assertion script** is mandatory (e.g. check_negatives.py):
+       positive: true samples must classify as their generation (guards against
+       over-correcting false positives until real shells slip through)
+       negative: clean samples must never classify as "hardened" and must not hit
+       the designated false-positive criteria
+     Both directions required; one-sided always fails. Failures print red and
+     exit non-zero.
+   - Remember: **a negative sample without assertions is decoration** — its value
+     is being runnable, not existing.
 
-11. SO/ELF 项目必做：结构异常检测（B13）+ 认知边界枚举（硬性）
-   - 凡涉及 SO/ELF 判定的「壳与脱壳」项目，检测器除 UPX 类特征外，**必须实现 B13**：
-     检测 `e_type==ET_DYN(3) 且 e_shnum==0 且存在可执行 PT_LOAD` 的节头表剥离形态。
-     依据：正常 NDK .so 永远带完整节头；自定义 Linker 自行按 Program Header 装载、不写标准节头。
-     该信号确定性高、独立于任何 UPX 魔数/分数，能抓到 UPX 类壳抓不到的自定义 Linker
-     （已在三个工程落地：ajiami / 360jiagu / upx_practice，做法可互相复制）。
-   - B13 命中时结论写「疑似 SO 加壳 / 自实现 Linker（ELF 节头被剥离）— 需人工进 ELF 层确认」，
-     不得写确定结论，不得与"未加壳"混为一谈。
-   - 认知边界必须显式点名以下**静态不可定性、必须动态 trace** 的场景
-     （即便零特征触发，也绝不等于「未加固」）：
-       ① SO VMP —— VMP 解释器在 SO 里只是普通大函数，ELF 结构正常则静态不可确认；
-       ② 不走「汇聚调用」形态的自定义 VMP（普通 hub-汇聚启发式对其失效）；
-       ③ 精巧的字符串加密（字符串根本不在常量池里，无结构性异常）。
-   - 必须配套 **B13 双向回归断言**（如 check_so_samples.py）：
-       正向——剥节头样本必触发 B13；
-       负向——原始 NDK .so（节头完整）必不触发；
-       防回归——既有的 UPX/360 判定不得被 B13 改造破坏。
+11. SO/ELF labs: structural anomaly detection (B13) + enumerated cognitive boundary
+    (hard)
+   - Any lab with SO/ELF verdicts must implement B13 alongside UPX-class features:
+     detect `e_type==ET_DYN(3) && e_shnum==0 && an executable PT_LOAD exists` —
+     the section-header-stripped shape. Rationale: normal NDK .so always carries a
+     full section table; custom linkers load via Program Headers and write no
+     standard section headers. This signal is deterministic and independent of any
+     UPX magic/score, catching custom linkers UPX-class detectors miss
+     (already landed in three labs: ajiami / 360jiagu / upx_practice).
+   - On a B13 hit, the verdict reads "suspected SO packing / self-implemented
+     linker (ELF section headers stripped) — confirm manually at the ELF layer";
+     never definitive, never conflated with "not packed".
+   - The cognitive boundary must explicitly name these **statically undecidable,
+     dynamic-trace-required** scenarios (zero features triggered still ≠ unpacked):
+       ① SO VMP — the interpreter is just a large ordinary function; normal ELF
+       structure means static analysis cannot confirm;
+       ② custom VMP without the hub-convergence shape (hub heuristics miss it);
+       ③ sophisticated string encryption (strings never touch the constant pool —
+       no structural anomaly).
+   - A **B13 two-way regression assertion** must ship (e.g. check_so_samples.py):
+       positive — the stripped sample must trigger B13;
+       negative — the original NDK .so (full section table) must not;
+       anti-regression — existing UPX/360 verdicts must survive the B13 changes.
 ```
 
 ---
 
-## 约定速查
+## Conventions quick reference
 
-| 项 | 约定 |
+| Item | Convention |
 |---|---|
-| 项目位置 | 仓库根目录下的 `<项目名>` 文件夹（每次新建文件夹）；文档里只写「工程根目录」 |
-| 文档 | 三份平行文档 `SCRIPT.md`(脚本)+`CLI.md`(命令行)+`GUI.md`(图形工具)，同一章节骨架 |
-| 手法分层 | SCRIPT=本仓 tools/ Python 代码；CLI=unzip/aapt2/xxd/readelf 等通用命令；GUI=jadx/IDA/Ghidra/010 Editor/GDA/JEB/binwalk(熵曲线)/apkid 等工具 |
-| 主题 | Android **壳与脱壳**（UPX/变种/压缩壳/内存 dump/OEP/ELF Fix/DEX 整体加密/类抽取） |
-| 不适用的主题 | 代码混淆 / 字符串保护 / VMP 教学 → 不用本提示词，单独写 |
-| 样本 | NDK clang 从源码编译，加壳前后同源，可逐字节对照 |
-| 样本目录 | `samples/apks/`(APK) · `samples/dex/`(黄金/壳/抽取态/解出 dex) · `samples/payloads/`(载荷/侧表/诱饵/策略表) · `samples/native/`(壳附属 SO)；SO 工程用 `samples/so/` 代替 apks 栏；样本禁止平铺工程根 |
-| 目录布局（硬性） | 工程根只允许：三份 md + samples/ + pristine/ + analysis_output/ + src/ + 可选(shell/ neg/ vmp/ app/ frida/) + tools/ + build/ + logs/；样本进 samples/、源码进 src/、产物进 analysis_output/、构建脚本进 build/；工具二进制进 tools/(gitignore，多版本按版本命名) |
-| 判定 | 结构特征 + 量化阈值；禁靠文件名/单一字符串 |
-| 知识点写法 | 五件套：是什么 / 怎么看 / 验证脚本 / 实测输出 / 失效边界 |
-| 回退 | `pristine/` 备份 + `tools/reset_lab.py`（status / restore / backup） |
-| 文档顺序 | 原理 → 脚本跑通 → 命令行复现 → 图形工具看懂；GUI 步骤标注对应脚本输出 |
-| GUI 工具选择（供智能体按步骤就近取用） | 反编译读 Java/资源：jadx；SO 逆向/调用链/交叉引用：IDA 或 Ghidra；十六进制编辑改字节：010 Editor（或 HxD/ImHex）；APK 结构快速浏览：GDA 或 JEB；熵分布曲线：binwalk -E（-p 存 PNG）；外部壳特征交叉验证：apkid；拆包/重打包：apktool。文档中 GUI 命令同样完整可复制（jadx -d / binwalk -E -p / apktool d 等），GUI 内操作写清「点哪里 / 看什么 / 怎么判」 |
-| 命令写法 | 完整无省略、放代码块、配「作用/参数/真实输出/逐行判读」 |
-| 命令自带解释 | 每条命令配行内注释（做什么 / 关键参数）+ `# =>` 预期输出；命令块后补一段「这几条命令分别干什么」 |
-| 路径与工具 | 四档：命令行参数 > 环境变量 > build/env.sh（可选） > 自动探测；拿不到就报错并告知 |
-| 零绝对路径 | 全库禁止盘符/用户目录；工程根由脚本自身位置推导；产物输出相对路径；**唯一例外**：文档里的 `cd` 示例可写本机实际路径 |
-| 环境模板 | `build/env.sh.example` 只放占位与说明，不含真实路径 |
-| 验证纪律（防循环论证） | 必跑负样本/反例；单判据不定性；证据互相印证才下代次结论 |
-| 认知边界（硬性） | 兜底写「未见已知特征（≠没有）」+ 显式列出不覆盖的方案（SO 类至少点名：SO VMP / 非汇聚 VMP / 字符串加密，均须动态 trace 才能定性）；禁写"未加固/没问题" |
-| 静默残缺（禁止） | 「只看主 dex / 只处理第一条」要么泛化，要么检测到多余项就响亮告警 |
-| 文档-代码同步（硬性） | 文档里贴的**任何**工具输出必须当场重跑后贴入；工具判据/阈值/回归断言一变，先改文档再提交，严禁留旧输出（ajiami §3.5 曾犯：B11 上线后文档还贴着"漏报"旧输出） |
-| 存量工程迁移 | 早期交付的单 README 工程（如 360jiagu / upx_practice）：内容达标的可暂按原状发布，但下次大改时必须顺势拆成 SCRIPT.md + CLI.md + GUI.md 三文档并对齐章节骨架；新工程一律直接用三文档，禁止再交付单 README。ajiami 已有两文档（SCRIPT/MANUAL）：下次大改时 MANUAL.md 改名 CLI.md、把其中 jadx/binwalk/010 Editor 等 GUI 内容抽出并扩充为 GUI.md |
-| 存量目录整理 | 360jiagu / upx_practice 当前把 .so 样本平铺在工程根、ajiami 的 neg/ / vmp/ 源码布局与 src/ 并列——下次触碰对应工程时按「固定目录布局」顺势归位（.so 迁入 samples/so/、pristine 清单同步重算、文档命令路径同步改）；一次性做完并跑回归，不做零碎迁移 |
+| Project location | A `<project-name>` folder under the repo root (new folder each time); docs say "the lab root" only |
+| Documents | Three parallel docs `SCRIPT.md` (script) + `CLI.md` (CLI) + `GUI.md` (GUI), one shared skeleton |
+| **Language** | **Repo-level files & commits in English; each lab's three docs in Chinese** (teaching material; tool output/paths stay original) |
+| Method layering | SCRIPT = this repo's tools/ Python code; CLI = unzip/aapt2/xxd/readelf generic commands; GUI = jadx/IDA/Ghidra/010 Editor/GDA/JEB/binwalk(-E)/apkid |
+| Topic | Android **packers & unpacking** (UPX/variants/compression shells/memory dump/OEP/ELF Fix/whole-DEX encryption/class extraction) |
+| Out of scope | Code obfuscation / string protection / VMP teaching → separate prompt |
+| Samples | NDK clang from source; packed/unpacked same-source, byte-comparable |
+| Sample bins | `samples/apks/` (APK) · `samples/dex/` (golden/shell/extracted/unpacked) · `samples/payloads/` (payloads/side tables/decoys/policy) · `samples/native/` (packer auxiliary SO); SO labs use `samples/so/` instead of apks; never flat at lab root |
+| Directory layout (hard) | Lab root allows only: three md + samples/ + pristine/ + analysis_output/ + src/ + optional(shell/ neg/ vmp/ app/ frida/) + tools/ + build/ + logs/; samples→samples/, sources→src/, artifacts→analysis_output/, build scripts→build/; tool binaries→tools/ (gitignored, version-named) |
+| Detection | Structural features + quantified thresholds; never file names / single strings |
+| Knowledge-point style | Five-part set: what / how to see / verification means / real output / failure boundary |
+| Reset | `pristine/` backup + `tools/reset_lab.py` (status / restore / backup) |
+| Doc order | Theory → script run → CLI reproduction → GUI understanding; GUI steps reference script output |
+| GUI tool selection (agents pick per step) | Java/resource decompile: jadx; SO reversing/call graphs/xrefs: IDA or Ghidra; hex editing: 010 Editor (or HxD/ImHex); APK structure browsing: GDA or JEB; entropy curve: binwalk -E (`-p` saves PNG); external packer cross-check: apkid; unpack/repack: apktool. GUI commands stay copy-paste complete (jadx -d / binwalk -E -p / apktool d); in-tool steps spell out where to click / what to look at / how to judge |
+| Command style | Complete, no ellipsis, in code blocks, with purpose/params/real output/line-by-line reading |
+| Self-explaining commands | Inline comment per command (what / key params) + `# =>` expected output; "what these commands do" paragraph after each block |
+| Paths & tools | Four tiers: CLI arg > env var > build/env.sh (optional) > auto-detect; on total miss, error with guidance |
+| Zero absolute paths | Repo-wide ban on drive/user paths; lab root from script location; artifacts print relative paths; sole exception: `cd` examples in docs |
+| Env template | `build/env.sh.example` carries placeholders and notes only |
+| Verification discipline (anti-circular) | Negative samples/counter-examples mandatory; single criterion never classifies; corroborating evidence before generation verdicts |
+| Cognitive boundary (hard) | Fallback reads "no known signature observed (≠ none)" + explicit uncovered-scheme list (SO labs name at least: SO VMP / non-hub VMP / string encryption — dynamic-trace-only); "not hardened / all clear" is forbidden |
+| Silent partiality (forbidden) | "Main dex only / first entry only": generalize, or warn loudly on extras |
+| Doc-code sync (hard) | Any tool output pasted into docs must come from a fresh run; when criteria/thresholds/assertions change, update docs before committing — stale outputs are forbidden (once occurred in ajiami: docs still showed the pre-B11 "missed detection" output after B11 landed) |
+| Legacy lab migration | Early single-README labs (360jiagu / upx_practice) may ship as-is while content-complete, but must be split into SCRIPT.md + CLI.md + GUI.md on next major revision; new labs are three-doc from the start — no more single-README deliveries |
+| Legacy directory cleanup | 360jiagu / upx_practice currently keep .so samples flat at the lab root; on the next touch of those labs, migrate to the fixed layout in one pass (.so → samples/so/, pristine manifest recomputed, doc command paths updated) with regressions green — no piecemeal moves |
