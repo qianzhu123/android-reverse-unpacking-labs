@@ -19,27 +19,27 @@
 cd upx_practice
 
 # ① 判定入口：脚本给量化结论（数值依据就是下面的 xxd/readelf）
-python tools/detect_packer.py libtarget_orig.so libtarget_upx.so libtarget_upx_variant.so libtarget_stripped.so
+python tools/detect_packer.py samples/so/libtarget_orig.so samples/so/libtarget_upx.so samples/so/libtarget_upx_variant.so samples/so/libtarget_stripped.so
 #   => orig 0 分 / 标准 16 分 / 变种 16 分 / stripped B13（逐项解读见「判定」）
 
 # ② xxd 直接看魔数：标准样本 4 处 UPX!，变种同位置变成 XXXX
-xxd -s 0x90 -l 32 libtarget_upx.so
+xxd -s 0x90 -l 32 samples/so/libtarget_upx.so
 #   => 00000090: 0000 0000 5a64 6ac0 5550 5821 300a 0e17  ....Zdj.UPX!0...
-xxd -s 0x90 -l 32 libtarget_upx_variant.so
+xxd -s 0x90 -l 32 samples/so/libtarget_upx_variant.so
 #   => 00000090: 0000 0000 5a64 6ac0 5858 5858 300a 0e17  ....Zdj.XXXX0...
 
 # ③ readelf 看节头剥离（F1 / B13 的字节级事实）
-readelf -h libtarget_orig.so          # => Number of section headers: 23（正常 NDK .so）
-readelf -h libtarget_upx.so           # => Number of section headers: 0（加壳剥节头）
-readelf -h libtarget_stripped.so      # => Type: DYN + section headers: 0（B13 形态）
+readelf -h samples/so/libtarget_orig.so          # => Number of section headers: 23（正常 NDK .so）
+readelf -h samples/so/libtarget_upx.so           # => Number of section headers: 0（加壳剥节头）
+readelf -h samples/so/libtarget_stripped.so      # => Type: DYN + section headers: 0（B13 形态）
 
 # ④ upx 直接操作：标准能解、变种不能
-./upx.exe -t libtarget_upx.so         # => testing libtarget_upx.so [OK]
-./upx.exe -d libtarget_upx.so -o out.so && ./upx.exe -t libtarget_upx_variant.so
+./upx.exe -t samples/so/libtarget_upx.so         # => testing samples/so/libtarget_upx.so [OK]
+./upx.exe -d samples/so/libtarget_upx.so -o out.so && ./upx.exe -t samples/so/libtarget_upx_variant.so
 #   => Unpacked 1 file.（out.so=70012）/ 变种: NotPackedException: not packed by UPX
 
 # ⑤ 验证：与黄金样本逐字节对照
-sha256sum libtarget_orig.so out.so && cmp -l libtarget_orig.so out.so
+sha256sum samples/so/libtarget_orig.so out.so && cmp -l samples/so/libtarget_orig.so out.so
 #   => 哈希不同（e_type 一处）；cmp 仅第 17 字节 1 处差异（03 vs 02）
 ```
 
@@ -49,7 +49,7 @@ sha256sum libtarget_orig.so out.so && cmp -l libtarget_orig.so out.so
 
 ## 工程结构
 
-同 `SCRIPT.md`——本路线直接在工程根操作 `libtarget_*.so` 与 `tools/`、`analysis_output/`，无额外目录。
+同 `SCRIPT.md`——样本一律住 `samples/so/`（分析对象），命令行产出的练习文件（`fixed.so` / `out.so` / `unpacked.so`）落在工程根、脚本报告落 `analysis_output/`；`reset_lab.py` 会识别并清理这些练习产物。
 
 ---
 
@@ -75,29 +75,29 @@ sha256sum libtarget_orig.so out.so && cmp -l libtarget_orig.so out.so
 
 ```bash
 # 原始 .so：节头完整、入口在段首、3 个 PT_LOAD 尺寸正常
-readelf -h libtarget_orig.so
+readelf -h samples/so/libtarget_orig.so
 #   => Type: DYN / Entry point address: 0x0
 #   => Start of section headers: 69092 / Number of section headers: 23   ← 正常 NDK .so
-readelf -l libtarget_orig.so
+readelf -l samples/so/libtarget_orig.so
 #   => LOAD 0x000000 0x00000000 ... 0x1043f 0x1043f R    ← filesz==memsz，无解压缓冲
 #   => LOAD 0x010440 0x00011440 ... 0x001e0 0x001e0 R E
 
 # 标准 UPX：3 个程序头、节头 0、入口在 stub 段、第一段 memsz 是 filesz 的 19 倍
-readelf -h libtarget_upx.so
+readelf -h samples/so/libtarget_upx.so
 #   => Type: EXEC / Entry point address: 0x1358c
 #   => Number of section headers: 0     ← F1 命中
-readelf -l libtarget_upx.so
+readelf -l samples/so/libtarget_upx.so
 #   => LOAD 0x000000 0x00000000 ... 0x01000 0x13000 RW   ← F3：filesz 0x1000 -> memsz 0x13000（19.0x）
 #   => LOAD 0x000000 0x00013000 ... 0x00faa 0x00faa R E   ← stub 段；0x1358C 落在它里面（F4）
 
 # B13 样本：e_type 仍是 DYN，但节头表偏移与数量都被清零
-readelf -h libtarget_stripped.so
+readelf -h samples/so/libtarget_stripped.so
 #   => Type: DYN (Shared object file)
 #   => Start of section headers: 0 (bytes into file)   ← 与 orig 的 69092 对比
 #   => Number of section headers: 0
-readelf -S libtarget_stripped.so
+readelf -S samples/so/libtarget_stripped.so
 #   => There are no sections in this file.
-readelf -S libtarget_upx.so
+readelf -S samples/so/libtarget_upx.so
 #   => There are no sections in this file.              ← 加壳样本同样无节（F1 的另一面）
 ```
 
@@ -107,24 +107,24 @@ readelf -S libtarget_upx.so
 
 ```bash
 # 偏移 0x98（stub 代码区）：标准 UPX! vs 变种 XXXX
-xxd -s 0x90 -l 32 libtarget_upx.so
+xxd -s 0x90 -l 32 samples/so/libtarget_upx.so
 #   00000090: 0000 0000 5a64 6ac0 5550 5821 300a 0e17  ....Zdj.UPX!0...
-xxd -s 0x90 -l 32 libtarget_upx_variant.so
+xxd -s 0x90 -l 32 samples/so/libtarget_upx_variant.so
 #   00000090: 0000 0000 5a64 6ac0 5858 5858 300a 0e17  ....Zdj.XXXX0...
 #                                  ^^^^^^^^^^^^ 5550 5821 -> 5858 5858（4 字节全改）
 
 # 偏移 0xc03（stub 代码区第二处）
-xxd -s 0xc00 -l 16 libtarget_upx.so
+xxd -s 0xc00 -l 16 samples/so/libtarget_upx.so
 #   00000c00: f0b7 7e55 5058 21f0 4f17 3f01 801d ff10  ..~UPX!.O.?.....
-xxd -s 0xc00 -l 16 libtarget_upx_variant.so
+xxd -s 0xc00 -l 16 samples/so/libtarget_upx_variant.so
 #   00000c00: f0b7 7e58 5858 58f0 4f17 3f01 801d ff10  ..~XXXX.O.?.....
 
 # 偏移 0x14b8 / 0x14c0（尾部结构两处；连带看 sz_unc 字段）
-xxd -s 0x14a0 -l 68 libtarget_upx.so
+xxd -s 0x14a0 -l 68 samples/so/libtarget_upx.so
 #   000014b0: 0004 80ff 0000 0000 5550 5821 0000 0000  ........UPX!....
 #   000014c0: 5550 5821 0e17 0308 5412 1c42 e9b3 d4f9   UPX!....T..B....
 #   000014d0: 7c11 0100 c014 0000 7c11 0100 0000 006b   |.......|......k
-xxd -s 0x14a0 -l 68 libtarget_upx_variant.so
+xxd -s 0x14a0 -l 68 samples/so/libtarget_upx_variant.so
 #   000014b0: 0004 80ff 0000 0000 5858 5858 0000 0000  ........XXXX....
 #   000014c0: 5858 5858 0e17 0308 5412 1c42 e9b3 d4f9   XXXX....T..B....
 #   000014d0: 7c11 0100 c014 0000 7c11 0100 0000 006b   |.......|......k
@@ -137,9 +137,9 @@ xxd -s 0x14a0 -l 68 libtarget_upx_variant.so
 
 ```bash
 # 纯标准库手算整文件熵，结果应与 detect_packer.py 输出一致（两者互为校验）
-python -c "import math,collections;d=open('libtarget_upx.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
+python -c "import math,collections;d=open('samples/so/libtarget_upx.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
 #   => entropy=7.309
-python -c "import math,collections;d=open('libtarget_orig.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
+python -c "import math,collections;d=open('samples/so/libtarget_orig.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
 #   => entropy=4.470
 ```
 
@@ -147,7 +147,7 @@ python -c "import math,collections;d=open('libtarget_orig.so','rb').read();c=col
 
 ```bash
 # upx_probe.py = 批量 upx -t/-l/-d 的包装（一次看清四个样本谁可自动解包）
-python tools/upx_probe.py libtarget_orig.so libtarget_upx.so libtarget_upx_variant.so libtarget_stripped.so
+python tools/upx_probe.py samples/so/libtarget_orig.so samples/so/libtarget_upx.so samples/so/libtarget_upx_variant.so samples/so/libtarget_stripped.so
 #   => orig:    upx -t FAIL (rc=2)   -- 需要手工/动态脱壳
 #   => upx:     upx -t OK;  -l 显示 70012 -> 5348 7.64% linux/arm;  -d OK -> 70012 bytes
 #   => variant: upx -t FAIL (rc=2)   -- 需要手工/动态脱壳
@@ -162,9 +162,9 @@ python tools/upx_probe.py libtarget_orig.so libtarget_upx.so libtarget_upx_varia
 
 ```bash
 # -t 先验证可解（校验和过不过），-d 解出到指定文件
-./upx.exe -t libtarget_upx.so
-#   => testing libtarget_upx.so [OK]   /   Tested 1 file.
-./upx.exe -d libtarget_upx.so -o out.so
+./upx.exe -t samples/so/libtarget_upx.so
+#   => testing samples/so/libtarget_upx.so [OK]   /   Tested 1 file.
+./upx.exe -d samples/so/libtarget_upx.so -o out.so
 #   => 70012 <- 5348   7.64%   linux/arm   out.so /   Unpacked 1 file.
 ```
 
@@ -172,18 +172,18 @@ python tools/upx_probe.py libtarget_orig.so libtarget_upx.so libtarget_upx_varia
 
 ```bash
 # 先实证确认真魔数（静态候选有巧合项，必须 upx -t 实证）
-python tools/detect_packer.py libtarget_upx_variant.so --verify
+python tools/detect_packer.py samples/so/libtarget_upx_variant.so --verify
 #   => b'XXXX' x4 -> upx -t OK   <= 真魔数；其余 \x00\x00|\x11 等候选均 FAIL
 
 # 命令行等价的"十六进制编辑器手改"：把 4 处偏移各 4 字节还原成 UPX!
 python -c "
-d=bytearray(open('libtarget_upx_variant.so','rb').read())
+d=bytearray(open('samples/so/libtarget_upx_variant.so','rb').read())
 for o in (0x98,0xc03,0x14b8,0x14c0): d[o:o+4]=b'UPX!'
 open('fixed.so','wb').write(d)"
 #   => 无输出；fixed.so = 5348 字节（体积不变）
 
 # 也可整体替换（4 处 token 完全一致时两法等价）
-python -c "open('fixed.so','wb').write(open('libtarget_upx_variant.so','rb').read().replace(b'XXXX',b'UPX!'))"
+python -c "open('fixed.so','wb').write(open('samples/so/libtarget_upx_variant.so','rb').read().replace(b'XXXX',b'UPX!'))"
 
 # 验证 + 解包
 ./upx.exe -t fixed.so && ./upx.exe -d fixed.so -o unpacked.so
@@ -198,7 +198,7 @@ python -c "open('fixed.so','wb').write(open('libtarget_upx_variant.so','rb').rea
 
 ```bash
 # simulate_dump 按 PT_LOAD 生成"运行态内存镜像"，dump_fix 重建可载入的 ELF
-python tools/simulate_dump.py libtarget_orig.so analysis_output/sim_dump.bin
+python tools/simulate_dump.py samples/so/libtarget_orig.so analysis_output/sim_dump.bin
 #   => [+] simulated dump -> analysis_output/sim_dump.bin  base=0x0 size=77824 (from 3 PT_LOAD, 32-bit)
 python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_fixed.so --arch arm
 #   => [+] wrote analysis_output/dump_fixed.so: base=0x0 size=77824 arch=arm entry=0x0
@@ -210,7 +210,7 @@ python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_f
 
 ```bash
 # 判据 1：体积恢复
-ls -l libtarget_orig.so unpacked.so
+ls -l samples/so/libtarget_orig.so unpacked.so
 #   => 两边都是 70012 字节
 
 # 判据 2：锚点找回（7 个锚点在脱壳产物里逐个 grep）
@@ -221,10 +221,10 @@ for a in ['AegisDroid-2026-SECRET-KEY','flag{upx_unpacking_is_fun}','com/aegis/N
 #   => 7 行全 OK
 
 # 判据 3：字节一致（sha256 定变化、cmp 定位差异）
-sha256sum libtarget_orig.so unpacked.so
-#   => 8905e1ab...  libtarget_orig.so
+sha256sum samples/so/libtarget_orig.so unpacked.so
+#   => 8905e1ab...  samples/so/libtarget_orig.so
 #   => d3067c0c...  unpacked.so        ← 哈希不同：有 e_type 一处差异
-cmp -l libtarget_orig.so unpacked.so
+cmp -l samples/so/libtarget_orig.so unpacked.so
 #      17   3   2     ← 全文件唯一差异：1-based 第 17 字节 = 偏移 16 的 e_type（03=ET_DYN vs 02=ET_EXEC）
 ```
 
@@ -279,22 +279,22 @@ python tools/reset_lab.py status
 
 ```bash
 # 判定（字节级依据）
-readelf -h libtarget_upx.so                 # e_type / e_entry / e_shnum 三联读
-readelf -l libtarget_upx.so                 # PT_LOAD FileSiz vs MemSiz（解压缓冲）
-readelf -S libtarget_stripped.so            # There are no sections（B13/F1）
-xxd -s 0x90 -l 32 libtarget_upx.so           # 魔数第一处（0x98）
-xxd -s 0xc00 -l 16 libtarget_upx_variant.so  # 魔数第二处（0xc03）
-xxd -s 0x14a0 -l 68 libtarget_upx_variant.so # 尾部两处（0x14b8/0x14c0）+ sz_unc 7c110100
-python -c "import math,collections;d=open('libtarget_upx.so','rb').read();c=collections.Counter(d);n=len(d);print('%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"  # 熵手算 => 7.309
+readelf -h samples/so/libtarget_upx.so                 # e_type / e_entry / e_shnum 三联读
+readelf -l samples/so/libtarget_upx.so                 # PT_LOAD FileSiz vs MemSiz（解压缓冲）
+readelf -S samples/so/libtarget_stripped.so            # There are no sections（B13/F1）
+xxd -s 0x90 -l 32 samples/so/libtarget_upx.so           # 魔数第一处（0x98）
+xxd -s 0xc00 -l 16 samples/so/libtarget_upx_variant.so  # 魔数第二处（0xc03）
+xxd -s 0x14a0 -l 68 samples/so/libtarget_upx_variant.so # 尾部两处（0x14b8/0x14c0）+ sz_unc 7c110100
+python -c "import math,collections;d=open('samples/so/libtarget_upx.so','rb').read();c=collections.Counter(d);n=len(d);print('%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"  # 熵手算 => 7.309
 
 # 脱壳
-./upx.exe -t libtarget_upx.so && ./upx.exe -d libtarget_upx.so -o out.so
-python -c "d=bytearray(open('libtarget_upx_variant.so','rb').read());[d.__setitem__(slice(o,o+4),b'UPX!') for o in (0x98,0xc03,0x14b8,0x14c0)];open('fixed.so','wb').write(d)"
+./upx.exe -t samples/so/libtarget_upx.so && ./upx.exe -d samples/so/libtarget_upx.so -o out.so
+python -c "d=bytearray(open('samples/so/libtarget_upx_variant.so','rb').read());[d.__setitem__(slice(o,o+4),b'UPX!') for o in (0x98,0xc03,0x14b8,0x14c0)];open('fixed.so','wb').write(d)"
 ./upx.exe -t fixed.so && ./upx.exe -d fixed.so -o unpacked.so
 
 # 验证
-sha256sum libtarget_orig.so unpacked.so
-cmp -l libtarget_orig.so unpacked.so        # => 仅 1 处：17 列 03 vs 02（e_type）
+sha256sum samples/so/libtarget_orig.so unpacked.so
+cmp -l samples/so/libtarget_orig.so unpacked.so        # => 仅 1 处：17 列 03 vs 02（e_type）
 
 # 回归 / 复位
 python tools/check_so_samples.py            # => 0 项失败
