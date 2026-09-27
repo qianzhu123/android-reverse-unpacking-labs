@@ -187,7 +187,14 @@ Requirements:
        CLI.md: generic commands,
        GUI.md: graphical tools.
        Overview: one-line positioning / why self-built samples (modeling note) /
-                 sample-list table / three-minute run (4–8 command minimal loop)
+                 sample-list table / three-minute run
+       The three-minute run is an **environment smoke test**: 4–8 commands that
+       prove the toolchain works end-to-end on the reader's machine and show the
+       minimal loop of this lab. It is NOT a summary of later chapters — each
+       command must be runnable as-is, and its expected output must be the
+       "it works" signal (green check / correct verdict), not teaching content.
+       Every command in it must belong to THIS document's route (see the
+       route-purity rule below); a CLI smoke test uses generic commands only.
        Lab layout / sample list (four bins: apks / dex / payloads / native; SO: so/)
        Knowledge points: fixed five-part set per section — what it is / how to see it
                  (structural feature + threshold) / verification means / real output /
@@ -205,6 +212,15 @@ Requirements:
      each document — no cross-copying conclusions. GUI outputs (decompiled code,
      entropy curves, hex views) are described via key reading points + necessary real
      excerpts; never leave the reader with a tool and no idea what to look at.
+   - **Route purity (hard)**: each document runs ONLY its own method's tools.
+     CLI.md uses generic commands (unzip / aapt2 / xxd / readelf / sha256sum / cmp /
+     apktool...) — invoking `python tools/*.py` inside CLI.md is forbidden (that is
+     SCRIPT.md's route; where a number CLI commands cannot produce, CLI.md says so
+     and points to SCRIPT.md instead of borrowing its scripts). GUI.md uses
+     graphical tools (jadx / IDA / 010 Editor / binwalk / apkid...); its smoke test
+     and steps likewise never invoke `tools/*.py`. SCRIPT.md is the only document
+     that runs this repo's Python tools. Cross-references between documents are
+     fine; cross-execution is not.
    - Every chapter states "what to do / what you should see / why" — conclusions alone
      are not acceptable.
    - Command style: complete and copy-pasteable (no `...` placeholders), in code blocks
