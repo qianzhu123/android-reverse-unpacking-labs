@@ -25,11 +25,11 @@
 
 | 文件 | 大小 | e_type | `UPX!` | `JG!!` | `upx -t` | 用途 |
 |---|---|---|---|---|---|---|
-| `libtarget_orig.so` | 43888 | ET_DYN(3) | 0 | 0 | FAIL | 原始 SO，黄金对照 |
-| `libtarget_360.so` | 17916 | ET_EXEC(2) | **4** | 0 | **OK** | 标准 360：可自动解包 |
-| `libtarget_360_variant.so` | 17916 | ET_EXEC(2) | 0 | **4** | **FAIL** | 变种 360：需手工/动态脱壳 |
-| `libtarget_stripped.so` | 43888 | ET_DYN(3) | 0 | 0 | — | **B13 正样本**：节头表被剥离，触发「疑似 SO 加壳 / 自实现 Linker」 |
-| `libtarget_orig_arm64.so` | 45848 | ET_DYN(3) | 0 | 0 | — | ARM64 原始 `.so`（架构对照，检测器自动识别 64 位） |
+| `samples/so/libtarget_orig.so` | 43888 | ET_DYN(3) | 0 | 0 | FAIL | 原始 SO，黄金对照 |
+| `samples/so/libtarget_360.so` | 17916 | ET_EXEC(2) | **4** | 0 | **OK** | 标准 360：可自动解包 |
+| `samples/so/libtarget_360_variant.so` | 17916 | ET_EXEC(2) | 0 | **4** | **FAIL** | 变种 360：需手工/动态脱壳 |
+| `samples/so/libtarget_stripped.so` | 43888 | ET_DYN(3) | 0 | 0 | — | **B13 正样本**：节头表被剥离，触发「疑似 SO 加壳 / 自实现 Linker」 |
+| `samples/so/libtarget_orig_arm64.so` | 45848 | ET_DYN(3) | 0 | 0 | — | ARM64 原始 `.so`（架构对照，检测器自动识别 64 位） |
 
 > **重要前提**：官方 UPX 4.2.4 **不能直接打包 Android 的 `ET_DYN` `.so`**（见「踩坑」）。
 > 本工程标准/变种样本以 `linux/arm ET_EXEC` 形式打包——**脱壳机制完全相同**（同样的 Stub、
@@ -41,23 +41,23 @@
 cd 360jiagu
 
 # ① 判定 4 个样本（不看文件名，只看结构特征；一次覆盖 orig/标准/变种/B13 四种形态）
-python tools/detect_360.py libtarget_orig.so            # => 综合得分 0  · 未见已知加固特征（≠未加壳）
-python tools/detect_360.py libtarget_360.so             # => 综合得分 16 · 标准 360（UPX! 保留，可自动解包）
-python tools/detect_360.py libtarget_360_variant.so     # => 综合得分 16 · ★ 变种 360（UPX! 被改写，结构仍在）
-python tools/detect_360.py libtarget_stripped.so        # => 综合得分 2  · B13：疑似 SO 加壳 / 自实现 Linker（节头被剥离）
+python tools/detect_360.py samples/so/libtarget_orig.so            # => 综合得分 0  · 未见已知加固特征（≠未加壳）
+python tools/detect_360.py samples/so/libtarget_360.so             # => 综合得分 16 · 标准 360（UPX! 保留，可自动解包）
+python tools/detect_360.py samples/so/libtarget_360_variant.so     # => 综合得分 16 · ★ 变种 360（UPX! 被改写，结构仍在）
+python tools/detect_360.py samples/so/libtarget_stripped.so        # => 综合得分 2  · B13：疑似 SO 加壳 / 自实现 Linker（节头被剥离）
 
 # ② 标准 360：直接官方解包（-t 先验证能解，-d 再解出；out.so 应为 43888 字节）
-./upx.exe -t libtarget_360.so && ./upx.exe -d libtarget_360.so -o out.so
+./upx.exe -t samples/so/libtarget_360.so && ./upx.exe -d samples/so/libtarget_360.so -o out.so
 #   => Unpacked 1 file.   out.so = 43888 字节
 
 # ③ 变种 360：先实证确认真魔数，再修复解包
-python tools/detect_360.py libtarget_360_variant.so --verify
+python tools/detect_360.py samples/so/libtarget_360_variant.so --verify
 #   => b'JG!!' x4 -> upx -t OK   <= 这就是被篡改的真魔数（其余候选是巧合项）
-python tools/solve_360.py libtarget_360_variant.so unpacked.so --orig libtarget_orig.so
+python tools/solve_360.py samples/so/libtarget_360_variant.so unpacked.so --orig samples/so/libtarget_orig.so
 #                └ 输入变种样本         └ 输出   └ 黄金样本：解完立刻比对，应报「除 e_type 外差异 0 字节」
 
 # ④ 解法 B 演练（无真机也能跑通内存 dump + ELF Fix）
-python tools/simulate_dump.py libtarget_orig.so analysis_output/sim_dump.bin
+python tools/simulate_dump.py samples/so/libtarget_orig.so analysis_output/sim_dump.bin
 python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_fixed.so --arch arm
 #   => wrote analysis_output/dump_fixed.so: base=0x0 size=53408 arch=arm entry=0x0
 
@@ -99,12 +99,14 @@ python tools/reset_lab.py restore                       # => 还原样本 + 删�
 │   ├── reset_lab.py           ★ 备份 / 状态 / 回归
 │   ├── anchors.txt            脱壳后应找回的锚点
 │   └── upx396.exe             UPX 3.96（对照用）
-├── pristine/                  原始样本备份 + sha256 清单（勿手改）
-├── analysis_output/           脚本产出（detect*.txt / solve.txt / sim_dump.bin / dump_fixed.so ...）
-├── libtarget_orig.so          【原始 SO】ET_DYN ARM32
-├── libtarget_360.so           【标准 360】upx -d 可解
-├── libtarget_360_variant.so   【变种 360】upx -d 失败
-└── libtarget_stripped.so      【B13 样本】节头剥离
+├── samples/so/                ★ 样本栏（SO 工程的 samples 容器；分析对象一律住这里，不平铺工程根）
+│   ├── libtarget_orig.so          【原始 SO】ET_DYN ARM32
+│   ├── libtarget_360.so           【标准 360】upx -d 可解
+│   ├── libtarget_360_variant.so   【变种 360】upx -d 失败
+│   ├── libtarget_stripped.so      【B13 样本】节头剥离
+│   └── libtarget_orig_arm64.so    ARM64 原始 .so（对照）
+├── pristine/so/               samples/ 的镜像备份 + manifest.json（勿手改）
+└── analysis_output/           脚本产出（detect*.txt / solve.txt / sim_dump.bin / dump_fixed.so ...）
 ```
 
 > 配置全部外置：`build/locate.sh` 四档探测（参数 > 环境变量 > 项目配置 > 自动探测），工程根由脚本自身位置推导，脚本内无写死路径。
@@ -152,7 +154,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 
 - **是什么**：`e_type==ET_DYN(3)` 且 `e_shnum==0` 且存在可执行 PT_LOAD 的形态。正常 NDK `.so` 永远带完整节头；自定义 Linker 自行按 Program Header 装载、不写标准节头。
 - **怎么看**：结构体检里 F1 命中 + e_type 仍为 ET_DYN 即触发 B13 专属结论（与"未加壳"严格区分）。
-- **验证手段**：`check_so_samples.py` 双向断言——`libtarget_stripped.so` 必触发、`libtarget_orig.so`（节头完整）必不触发。
+- **验证手段**：`check_so_samples.py` 双向断言——`samples/so/libtarget_stripped.so` 必触发、`samples/so/libtarget_orig.so`（节头完整）必不触发。
 - **实测输出**：
 
 ```
@@ -161,7 +163,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 判定结果: 疑似 SO 加壳 / 自实现 Linker（ELF 节头被剥离）— 需人工进 ELF 层确认
 ```
 
-- **失效边界**：B13 是"疑似"信号，不得写确定结论；`libtarget_stripped.so` **没有任何 UPX 特征**，仅靠这一条信号被检出——证明 B13 能抓到 UPX 类壳抓不到的自定义 Linker。
+- **失效边界**：B13 是"疑似"信号，不得写确定结论；`samples/so/libtarget_stripped.so` **没有任何 UPX 特征**，仅靠这一条信号被检出——证明 B13 能抓到 UPX 类壳抓不到的自定义 Linker。
 
 ### 认知边界：静态不可定性的方案 **[知识框架]**
 
@@ -192,10 +194,10 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 
 ### 实跑输出（节选）
 
-标准 360（`python tools/detect_360.py libtarget_360.so`）：
+标准 360（`python tools/detect_360.py samples/so/libtarget_360.so`）：
 
 ```
-目标: libtarget_360.so   (17916 bytes)
+目标: samples/so/libtarget_360.so   (17916 bytes)
   架构: 32-bit  e_type=2  e_entry=0x11684
   [命中] F1 节区头数量         e_shnum=0                      (+2)
   [命中] F2 整文件熵          7.598 bits/byte                (+2)
@@ -208,10 +210,10 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 判定结果: 标准 360 加固（改版 UPX，UPX! 保留，可自动解包）
 ```
 
-变种 360（`python tools/detect_360.py libtarget_360_variant.so`）：
+变种 360（`python tools/detect_360.py samples/so/libtarget_360_variant.so`）：
 
 ```
-目标: libtarget_360_variant.so   (17916 bytes)
+目标: samples/so/libtarget_360_variant.so   (17916 bytes)
   [命中] F1 节区头数量         e_shnum=0                      (+2)
   [命中] F2 整文件熵          7.598 bits/byte                (+2)
   [命中] F3 大解压缓冲段        PT_LOAD[0] filesz=0x1000 -> memsz=0xD0A0 (13.0x)  (+3)
@@ -224,7 +226,7 @@ System.loadLibrary → linker → 映射 PT_LOAD → 360 Stub → 运行期解�
 判定结果: ★ 变种 360 加固（UPX! 被 360 改写，结构仍在）
 ```
 
-B13 样本（`python tools/detect_360.py libtarget_stripped.so`，关键行）：
+B13 样本（`python tools/detect_360.py samples/so/libtarget_stripped.so`，关键行）：
 
 ```
   [命中] F1 节区头数量         e_shnum=0
@@ -263,13 +265,13 @@ B13 样本（`python tools/detect_360.py libtarget_stripped.so`，关键行）�
 ### 解法 A：solve_360.py（变种只抹特征，Stub 与控制流未动）
 
 ```bash
-python tools/solve_360.py libtarget_360_variant.so unpacked.so --orig libtarget_orig.so
+python tools/solve_360.py samples/so/libtarget_360_variant.so unpacked.so --orig samples/so/libtarget_orig.so
 ```
 
 实跑输出（节选）：
 
 ```
-[*] 样本: libtarget_360_variant.so (17916 bytes)
+[*] 样本: samples/so/libtarget_360_variant.so (17916 bytes)
 [*] 现有 'UPX!' 数量: 0
 [*] 使用的 upx: upx.exe
     候选 token b'\x00\x00\x00\x00' x37 -> upx -t FAIL
@@ -287,7 +289,7 @@ python tools/solve_360.py libtarget_360_variant.so unpacked.so --orig libtarget_
     check_license                  OK 找到
     blob_selfcheck                 OK 找到
 
-[*] 与原始 SO 对比: libtarget_orig.so (43888 bytes)
+[*] 与原始 SO 对比: samples/so/libtarget_orig.so (43888 bytes)
     大小: 43888 vs 43888  一致
     除 e_type 外差异字节数: 0  => 内容一致，脱壳成功
 ```
@@ -306,7 +308,7 @@ python tools/solve_360.py libtarget_360_variant.so unpacked.so --orig libtarget_
 
 ```javascript
 // 等模块加载完成后 dump（此时内存里已是解压后的原始代码）
-const lib = "libtarget_360_variant.so";
+const lib = "samples/so/libtarget_360_variant.so";
 const t = setInterval(() => {
   try {
     const m = Process.getModuleByName(lib);
@@ -325,7 +327,7 @@ const t = setInterval(() => {
 本工程演练（无真机也能跑通）：
 
 ```bash
-python tools/simulate_dump.py libtarget_orig.so analysis_output/sim_dump.bin
+python tools/simulate_dump.py samples/so/libtarget_orig.so analysis_output/sim_dump.bin
 python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_fixed.so --arch arm
 ```
 
@@ -349,12 +351,12 @@ python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_f
 
 三条判据（每条都实跑过）：
 
-1. **体积恢复**：`unpacked.so = 43888` == `libtarget_orig.so = 43888`
+1. **体积恢复**：`unpacked.so = 43888` == `samples/so/libtarget_orig.so = 43888`
 2. **锚点找回**：`tools/anchors.txt` 的 8 个锚点全部可见（solve 输出逐条 `OK 找到`）
-3. **字节一致**：与 `libtarget_orig.so` 除偏移 16 的 `e_type` 外 **0 字节差异**（解出 ET_EXEC=2，原始 ET_DYN=3；代码内容完全一致）。`cmp -l` 实测全文件仅 1 处差异：
+3. **字节一致**：与 `samples/so/libtarget_orig.so` 除偏移 16 的 `e_type` 外 **0 字节差异**（解出 ET_EXEC=2，原始 ET_DYN=3；代码内容完全一致）。`cmp -l` 实测全文件仅 1 处差异：
 
 ```
-$ cmp -l libtarget_orig.so unpacked.so
+$ cmp -l samples/so/libtarget_orig.so unpacked.so
    17   3   2        ← 1-based 第 17 字节 = 0 偏移 16 的 e_type：03(ET_DYN) vs 02(ET_EXEC)
 ```
 
@@ -392,13 +394,15 @@ python tools/reset_lab.py backup     # 改过源码后刷新基线
 ```
 [*] 练习根目录: D:\code\android\reverse\360jiagu
 样本状态对比:
-  [一致]   libtarget_360.so                    17916 bytes
-  [一致]   libtarget_360_variant.so            17916 bytes
-  [一致]   libtarget_orig.so                   43888 bytes
-  [一致]   libtarget_stripped.so               43888 bytes
-  [一致]   libtarget_orig_arm64.so             45848 bytes
+  [一致]   so/libtarget_360.so                         17916 bytes
+  [一致]   so/libtarget_360_variant.so                 17916 bytes
+  [一致]   so/libtarget_orig.so                        43888 bytes
+  [一致]   so/libtarget_orig_arm64.so                  45848 bytes
+  [一致]   so/libtarget_stripped.so                    43888 bytes
 
 练习产物: 无（环境干净）
+输出目录 analysis_output/: 空
+
 当前环境: 干净，可直接开始练习
 ```
 
@@ -420,10 +424,10 @@ python tools/check_so_samples.py
 实跑输出：
 
 ```
-[PASS] libtarget_stripped.so   b13=True  -> 疑似 SO 加壳 / 自实现 Linker（ELF 节头被剥离）— 需人工进 ELF 层确认
-[PASS] libtarget_orig.so       b13=False -> 未见已知加固特征（≠未加壳）
-[PASS] libtarget_360.so           仍为加壳判定: 标准 360 加固（改版 UPX，UPX! 保留，可自动解包）
-[PASS] libtarget_360_variant.so   仍为加壳判定: ★ 变种 360 加固（UPX! 被 360 改写，结构仍在）
+[PASS] samples/so/libtarget_stripped.so   b13=True  -> 疑似 SO 加壳 / 自实现 Linker（ELF 节头被剥离）— 需人工进 ELF 层确认
+[PASS] samples/so/libtarget_orig.so       b13=False -> 未见已知加固特征（≠未加壳）
+[PASS] samples/so/libtarget_360.so           仍为加壳判定: 标准 360 加固（改版 UPX，UPX! 保留，可自动解包）
+[PASS] samples/so/libtarget_360_variant.so   仍为加壳判定: ★ 变种 360 加固（UPX! 被 360 改写，结构仍在）
 
 0 项失败
 ```
@@ -450,20 +454,20 @@ python tools/check_so_samples.py
 ```bash
 # 判定
 python tools/detect_360.py <file> [--brief] [--verify]
-python tools/elf_scan.py   libtarget_orig.so libtarget_360.so libtarget_360_variant.so
-python tools/upx_probe.py  libtarget_orig.so libtarget_360.so libtarget_360_variant.so
+python tools/elf_scan.py   samples/so/libtarget_orig.so samples/so/libtarget_360.so samples/so/libtarget_360_variant.so
+python tools/upx_probe.py  samples/so/libtarget_orig.so samples/so/libtarget_360.so samples/so/libtarget_360_variant.so
 
 # 解法 A
-python tools/solve_360.py libtarget_360_variant.so unpacked.so --orig libtarget_orig.so
+python tools/solve_360.py samples/so/libtarget_360_variant.so unpacked.so --orig samples/so/libtarget_orig.so
 
 # 解法 B
-python tools/simulate_dump.py libtarget_orig.so analysis_output/sim_dump.bin
+python tools/simulate_dump.py samples/so/libtarget_orig.so analysis_output/sim_dump.bin
 python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_fixed.so --arch arm
 
 # 重新生成样本
 bash build/build_android.sh    # NDK 编译原始 .so（含 gen_policy.py 生成策略表）
 bash build/pack.sh             # 生成标准 + 变种
-python tools/make_stripped_so.py libtarget_orig.so libtarget_stripped.so   # 生成 B13 样本
+python tools/make_stripped_so.py samples/so/libtarget_orig.so samples/so/libtarget_stripped.so   # 生成 B13 样本
 
 # 回归
 python tools/check_so_samples.py    # B13 双向断言（0 失败才算过）

@@ -23,18 +23,18 @@
 cd 360jiagu
 
 # ① 010 Editor：改 4 处魔数（解法 A 的 GUI 版，对应 CLI 的 xxd/手改字节）
-#    打开 libtarget_360_variant.so -> Ctrl+G 跳 0x98/0x3cfb/0x45cf/0x45d8
+#    打开 samples/so/libtarget_360_variant.so -> Ctrl+G 跳 0x98/0x3cfb/0x45cf/0x45d8
 #    -> 各把 4 字节 4A 47 21 21 改成 55 50 58 21 -> 另存 fixed.so
 #    => ./upx.exe -t fixed.so 报 [OK]（改前是 not packed by UPX）
 
 # ② IDA/Ghidra：看脱壳产物调用链（解法 B 的验证形态）
 #    载入 analysis_output/solve_unpacked.so -> Exports 里 JNI_OnLoad
 #    -> Imports/交叉引用 RegisterNatives -> getFlag -> check_license
-#    => 对照壳样本：载入 libtarget_360.so 时 IDA 看不到任何节名（e_shnum=0 的可读形态）
+#    => 对照壳样本：载入 samples/so/libtarget_360.so 时 IDA 看不到任何节名（e_shnum=0 的可读形态）
 
 # ③ binwalk：熵曲线（F2 的可视化）
-binwalk -E libtarget_360.so
-#    => Plotly 熵曲线全程高位（≈7.6）；对 libtarget_orig.so 则在 5 上下波动
+binwalk -E samples/so/libtarget_360.so
+#    => Plotly 熵曲线全程高位（≈7.6）；对 samples/so/libtarget_orig.so 则在 5 上下波动
 ```
 
 三步各看一个形态：① 「魔数长什么样、改哪里」、② 「脱壳前后的调用链与节视图差异」、③ 「熵的高低位分布」。量化结论拿法见 `SCRIPT.md` / `CLI.md`，本档负责让你**亲眼看到**。
@@ -43,7 +43,7 @@ binwalk -E libtarget_360.so
 
 ## 工程结构
 
-同 `SCRIPT.md`；GUI 产物（010 Editor 另存的 `fixed.so`、IDA 数据库）放工程根或 `analysis_output/`，不污染 `pristine/`；`reset_lab.py` 会把 `fixed.so`/`unpacked.so` 这类练习产物识别并清理。
+同 `SCRIPT.md`——样本一律住 `samples/so/`；GUI 产物（010 Editor 另存的 `fixed.so`、IDA 数据库）放工程根或 `analysis_output/`，不污染 `samples/so/` 与 `pristine/`；`reset_lab.py` 会把 `fixed.so`/`unpacked.so` 这类练习产物识别并清理。
 
 ---
 
@@ -65,23 +65,23 @@ binwalk -E libtarget_360.so
 
 ### 010 Editor 读结构（对应 CLI 的 readelf / xxd）
 
-1. **打开**：010 Editor 拖入 `libtarget_360.so`（或 File → Open）。
+1. **打开**：010 Editor 拖入 `samples/so/libtarget_360.so`（或 File → Open）。
 2. **跑 ELF 模板**：菜单 `Templates → File Templates...` 选 `ELF/EXE (ELF64.bt / ELF.bt)`，`Run Template`（32 位样本选 ELF）。
 3. **看什么**：模板解析结果窗口（`Results` 面板 / `Template Results`）里展开 `elf_header`：
    - `e_type = 2 (ET_EXEC)`——加壳样本被 pack 成 ET_EXEC（正常 Android `.so` 应为 3 ET_DYN）；
    - `e_entry = 0x11684`——入口不在段首（orig 是 0x0）；
    - `e_shnum = 0` / `e_shoff = 0`——**节头表被整体剥离**，正常 NDK `.so` 这里应是 24 和 42928 量级的偏移。
-4. **怎么判**：`e_shnum=0` + 入口非段首联读即 F1/F4 命中的 GUI 形态。对 `libtarget_stripped.so` 重复同样操作：`e_type=3 (ET_DYN)` **且** `e_shnum=0`——这就是 B13（自实现 Linker）的形态，与"未加壳"的区分点全在这两个字段联读上。
+4. **怎么判**：`e_shnum=0` + 入口非段首联读即 F1/F4 命中的 GUI 形态。对 `samples/so/libtarget_stripped.so` 重复同样操作：`e_type=3 (ET_DYN)` **且** `e_shnum=0`——这就是 B13（自实现 Linker）的形态，与"未加壳"的区分点全在这两个字段联读上。
 
 ### binwalk -E 熵曲线（F2 的可视化）
 
 ```bash
 # 整文件熵曲线：加壳 vs 原始，两条曲线一对比，F2 一目了然
-binwalk -E libtarget_360.so
+binwalk -E samples/so/libtarget_360.so
 #   => Plotly 交互图（浏览器打开）：整条曲线贴着高位走（≈7.6）= 主体是压缩数据
-binwalk -E libtarget_orig.so
+binwalk -E samples/so/libtarget_orig.so
 #   => 曲线在 5 上下波动 = 正常代码/数据
-binwalk -E libtarget_stripped.so
+binwalk -E samples/so/libtarget_stripped.so
 #   => 曲线与 orig 几乎重合（≈5.0）——B13 样本没压缩，异常在"结构"不在"熵"
 ```
 
@@ -96,7 +96,7 @@ binwalk -E libtarget_stripped.so
 
 前提：`detect_360.py --verify` 已实证真魔数是 `JG!!`，4 处偏移 `0x98 / 0x3cfb / 0x45cf / 0x45d8`（每处 4 字节）。
 
-1. **打开**：010 Editor 打开 `libtarget_360_variant.so`。
+1. **打开**：010 Editor 打开 `samples/so/libtarget_360_variant.so`。
 2. **跳偏移**：`Ctrl+G`（Go To）输入 `0x98` 回车——光标落在十六进制视图的该偏移上；你会看到 `4A 47 21 21`（`JG!!`）。
 3. **改字节**：直接在十六进制列把 `4A 47 21 21` 改成 `55 50 58 21`（`UPX!`）；或者右键该选区用编辑功能，或直接键盘输入。
 4. **重复**：`Ctrl+G` 依次跳 `0x3cfb`、`0x45cf`、`0x45d8`，每处同样 4 字节改成 `55 50 58 21`。
@@ -109,7 +109,7 @@ binwalk -E libtarget_stripped.so
 ```
 
 **看什么 / 怎么判**：改之前先 `Ctrl+F`（Find）搜十六进制 `4A 47 21 21`——应命中且仅命中 4 处，与 `detect_360.py` F8 给的偏移列表一一对应；改完后同搜索应 0 命中，改搜 `55 50 58 21` 应 4 命中。**只改任意一处不灵**（`upx -t` 仍报 `not packed by UPX`，校验和覆盖全部内嵌魔数——实测过，见 `CLI.md`）。
-**对照**：010 Editor 里同时打开 `libtarget_360.so`（标准样本），`Ctrl+G` 跳同样 4 处偏移——那里本来就是 `55 50 58 21`。这就是"变种与标准的唯一区别是魔数被改写"的肉眼证明。
+**对照**：010 Editor 里同时打开 `samples/so/libtarget_360.so`（标准样本），`Ctrl+G` 跳同样 4 处偏移——那里本来就是 `55 50 58 21`。这就是"变种与标准的唯一区别是魔数被改写"的肉眼证明。
 
 ### 解法 B：IDA/Ghidra 看调用链（dump 之后的"看懂"环节）
 
@@ -127,7 +127,7 @@ binwalk -E libtarget_stripped.so
 4. **看锚点**：`Shift+F12` 打开 Strings 窗口——`360jiagu_lab_payload_marker_v1`、`JiaguLab-2026-SECRET-KEY`、`flag{jiagu_unpacking_is_fun}` 等锚点全部可见；双击任一锚点跳到 `.rodata`，再按 `X`（交叉引用）能看到哪些函数在用它。
 5. **怎么判**：调用链完整 + 锚点可搜 = 脱壳真的还原了原始代码（对应 `SCRIPT.md`「验证」判据 2 的 GUI 形态）。
 
-**壳样本的判读点（对照实验，值得做一次）**：用 IDA 直接打开**加壳样本** `libtarget_360.so`——
+**壳样本的判读点（对照实验，值得做一次）**：用 IDA 直接打开**加壳样本** `samples/so/libtarget_360.so`——
 - `View → Open subviews → Sections`（节视图）**是空的**：因为 `e_shnum=0`，IDA 只能按 Program Header 建段（Segments 有、Sections 无）——**正常 NDK `.so` 打开后 Sections 窗口是一长串 `.text/.rodata/.dynsym`，壳样本一个都没有**。这就是 F1「加壳剥离节区表，IDA 看不到 .text/.rodata」的字面形态；
 - 入口点（`e_entry=0x11684`）落在 stub 段里，反汇编是解压 stub 代码，看不到任何业务函数；Strings 窗口里搜不到 `getFlag`/`check_license` 的函数名（它们在压缩数据里）。
 两相对照，"脱壳前看不见、脱壳后全看见"就是 GUI 路线对判定/验证两章的可视化佐证。
@@ -142,7 +142,7 @@ binwalk -E libtarget_stripped.so
 
 ## 验证
 
-SCRIPT「验证」的三条判据（体积/锚点/字节差）都是量化的事；GUI 视角只有一个动作：**IDA 同时打开脱壳产物与黄金样本 `libtarget_orig.so`**——
+SCRIPT「验证」的三条判据（体积/锚点/字节差）都是量化的事；GUI 视角只有一个动作：**IDA 同时打开脱壳产物与黄金样本 `samples/so/libtarget_orig.so`**——
 
 - 两边 `Shift+F12` 搜锚点，命中同样的字符串、同样的交叉引用出处；
 - `JNI_OnLoad` 的反汇编两边逐行一致（唯一不同：脱壳产物 `e_type=ET_EXEC`，黄金样本 `ET_DYN`，不影响反汇编视图）；
@@ -183,7 +183,7 @@ SCRIPT「验证」的三条判据（体积/锚点/字节差）都是量化的事
 1. **binwalk 3.1.1 存 PNG 依赖 Kaleido**：本机 `-p <png>` 实测失败，报
    `plotly_kaleido ... couldn't write to Kaleido stdin: Os { code: 109, kind: BrokenPipe }`——
    本机 Kaleido 缺 `mf.dll`。`-E` 的交互图（浏览器打开的 Plotly 页）**不受影响**，能正常看曲线；要留档就截图，或修 Kaleido 环境（补 mf.dll 后重试 `-p`）。
-2. **010 Editor 改完别覆盖原样本**：直接 Save 会改掉 `libtarget_360_variant.so`，`reset_lab.py status` 会立刻标红，回归也可能被破坏——一律 Save As 到 `fixed.so` 等练习产物名。
+2. **010 Editor 改完别覆盖原样本**：直接 Save 会改掉 `samples/so/libtarget_360_variant.so`，`reset_lab.py status` 会立刻标红，回归也可能被破坏——一律 Save As 到 `fixed.so` 等练习产物名。
 3. **010 Editor 的 Ctrl+G 输入是十六进制**：`G` 对话框默认 Hex 模式，`0x98` 或 `98` 都行；输十进制想清楚再改 Base。
 4. **IDA 打开壳样本可能不识别为 ARM**：剥节头的 ELF 有时需要手动选处理器（ARM little-endian）与入口；载不进去不等于文件坏——先跑 `detect_360.py` 确认结构，再回来载。
 5. **IDA 对 dump 产物的交叉引用不全**：`dump_fix.py` 是最小重建（单 PT_LOAD + `.text`），`.dynamic`/`.dynsym` 缺失导致导入表为空、部分函数无法命名——这是重建器的边界，不是脱壳失败；判定以锚点字符串与调用链为准。
@@ -194,7 +194,7 @@ SCRIPT「验证」的三条判据（体积/锚点/字节差）都是量化的事
 
 ```
 010 Editor：改魔数（解法 A）
-  打开 libtarget_360_variant.so
+  打开 samples/so/libtarget_360_variant.so
   Ctrl+G -> 0x98 / 0x3cfb / 0x45cf / 0x45d8
   每处 4 字节：4A 47 21 21 -> 55 50 58 21
   Save As fixed.so -> ./upx.exe -t fixed.so 应 [OK]
@@ -203,12 +203,12 @@ IDA：看调用链（解法 B 验证）
   载入脱壳产物（ARM）-> Exports 找 JNI_OnLoad -> RegisterNatives
   -> getFlag / check_license / blob_selfcheck
   Shift+F12 搜锚点：360jiagu_lab_payload_marker_v1 / JiaguLab-2026-SECRET-KEY / flag{...}
-  对照：打开 libtarget_360.so 时 Sections 窗口为空（e_shnum=0 的可读形态）
+  对照：打开 samples/so/libtarget_360.so 时 Sections 窗口为空（e_shnum=0 的可读形态）
 
 binwalk：熵曲线（判定 F2 可视化）
-  binwalk -E libtarget_360.so          => 曲线全程高位（≈7.6）
-  binwalk -E libtarget_orig.so         => 曲线在 5 上下
-  binwalk -E libtarget_stripped.so     => 曲线正常（≈5.0）但节头被剥——熵曲线抓不到 B13
+  binwalk -E samples/so/libtarget_360.so          => 曲线全程高位（≈7.6）
+  binwalk -E samples/so/libtarget_orig.so         => 曲线在 5 上下
+  binwalk -E samples/so/libtarget_stripped.so     => 曲线正常（≈5.0）但节头被剥——熵曲线抓不到 B13
   （-p 存 PNG 本机失败：Kaleido 缺 mf.dll；用 -E 交互图或截图）
 
 复检

@@ -7,6 +7,7 @@ set -e
 source "$(dirname "${BASH_SOURCE[0]}")/locate.sh"
 locate_require NDK PY
 cd "$ROOT"
+mkdir -p samples/so
 
 # 先生成策略表（提供可压缩体积，让 UPX 能打包；见 SCRIPT.md「踩坑」）
 "$PY" build/gen_policy.py
@@ -16,10 +17,10 @@ cd "$ROOT"
 # 让 360 的 UPX 历史基础壳更易识别（官方 UPX 4.2.4 仍只打包 ET_EXEC，见 SCRIPT.md「踩坑」）。
 "$CLANG" --target=armv7a-linux-androideabi21 -shared -fPIC -O2 \
   -Wl,--hash-style=sysv -Wl,--pack-dyn-relocs=none \
-  -o libtarget_orig.so src/target.c
+  -o samples/so/libtarget_orig.so src/target.c
 
 # ARM64（对照/参考，仅作源码对照；官方 UPX 4.2.4 不打包 ET_DYN）
 "$CLANG" --target=aarch64-linux-android21 -shared -fPIC -O2 \
-  -o libtarget_orig_arm64.so src/target.c
+  -o samples/so/libtarget_orig_arm64.so src/target.c
 
-echo "[+] built libtarget_orig.so (arm32) + libtarget_orig_arm64.so (arm64)"
+echo "[+] built samples/so/libtarget_orig.so (arm32) + samples/so/libtarget_orig_arm64.so (arm64)"

@@ -19,27 +19,27 @@
 cd 360jiagu
 
 # ① 判定入口：脚本给量化结论（数值依据就是下面的 xxd/readelf）
-python tools/detect_360.py libtarget_orig.so libtarget_360.so libtarget_360_variant.so libtarget_stripped.so
+python tools/detect_360.py samples/so/libtarget_orig.so samples/so/libtarget_360.so samples/so/libtarget_360_variant.so samples/so/libtarget_stripped.so
 #   => orig 0 分 / 标准 16 分 / 变种 16 分 / stripped B13（逐项解读见「判定」）
 
 # ② xxd 直接看魔数：标准样本 4 处 UPX!，变种同位置变成 JG!!
-xxd -s 0x90 -l 32 libtarget_360.so
+xxd -s 0x90 -l 32 samples/so/libtarget_360.so
 #   => 00000090: 0000 0000 5a64 6ac0 5550 5821 300a 0e17  ....Zdj.UPX!0...
-xxd -s 0x90 -l 32 libtarget_360_variant.so
+xxd -s 0x90 -l 32 samples/so/libtarget_360_variant.so
 #   => 00000090: 0000 0000 5a64 6ac0 4a47 2121 300a 0e17  ....Zdj.JG!!0...
 
 # ③ readelf 看节头剥离（F1 / B13 的字节级事实）
-readelf -h libtarget_orig.so          # => Number of section headers: 24（正常 NDK .so）
-readelf -h libtarget_360.so           # => Number of section headers: 0（加壳剥节头）
-readelf -h libtarget_stripped.so      # => Type: DYN + section headers: 0（B13 形态）
+readelf -h samples/so/libtarget_orig.so          # => Number of section headers: 24（正常 NDK .so）
+readelf -h samples/so/libtarget_360.so           # => Number of section headers: 0（加壳剥节头）
+readelf -h samples/so/libtarget_stripped.so      # => Type: DYN + section headers: 0（B13 形态）
 
 # ④ upx 直接操作：标准能解、变种不能
-./upx.exe -t libtarget_360.so         # => testing libtarget_360.so [OK]
-./upx.exe -d libtarget_360.so -o out.so && ./upx.exe -t libtarget_360_variant.so
+./upx.exe -t samples/so/libtarget_360.so         # => testing samples/so/libtarget_360.so [OK]
+./upx.exe -d samples/so/libtarget_360.so -o out.so && ./upx.exe -t samples/so/libtarget_360_variant.so
 #   => Unpacked 1 file.（out.so=43888）/ 变种: NotPackedException: not packed by UPX
 
 # ⑤ 验证：与黄金样本逐字节对照
-sha256sum libtarget_orig.so out.so && cmp -l libtarget_orig.so out.so
+sha256sum samples/so/libtarget_orig.so out.so && cmp -l samples/so/libtarget_orig.so out.so
 #   => 哈希不同（e_type 一处）；cmp 仅第 17 字节 1 处差异（03 vs 02）
 ```
 
@@ -49,7 +49,7 @@ sha256sum libtarget_orig.so out.so && cmp -l libtarget_orig.so out.so
 
 ## 工程结构
 
-同 `SCRIPT.md`——本路线直接在工程根操作 `libtarget_*.so` 与 `tools/`、`analysis_output/`，无额外目录。
+同 `SCRIPT.md`——样本一律住 `samples/so/`（分析对象），命令行产出的练习文件（`fixed.so` / `out.so` / `unpacked.so`）落在工程根、脚本报告落 `analysis_output/`；`reset_lab.py` 会识别并清理这些练习产物。
 
 ---
 
@@ -75,30 +75,30 @@ sha256sum libtarget_orig.so out.so && cmp -l libtarget_orig.so out.so
 
 ```bash
 # 原始 .so：节头完整、入口在段首、4 个 PT_LOAD 尺寸正常
-readelf -h libtarget_orig.so
+readelf -h samples/so/libtarget_orig.so
 #   => Type: DYN / Entry point address: 0x0
 #   => Number of section headers: 24    ← 正常 NDK .so 永远带完整节头
-readelf -l libtarget_orig.so
+readelf -l samples/so/libtarget_orig.so
 #   => LOAD 0x000000 0x00000000 ... 0x09d27 0x09d27 R    ← filesz==memsz，无解压缓冲
 #   => LOAD 0x009d28 0x0000ad28 ... 0x00278 0x00278 R E
 
 # 标准 360：3 个程序头、节头 0、入口在 stub 段、第一段 memsz 是 filesz 的 13 倍
-readelf -h libtarget_360.so
+readelf -h samples/so/libtarget_360.so
 #   => Type: EXEC / Entry point address: 0x11684
 #   => Number of section headers: 0     ← F1 命中
-readelf -l libtarget_360.so
+readelf -l samples/so/libtarget_360.so
 #   => LOAD 0x000000 0x00000000 ... 0x01000 0x0d0a0 RW   ← F3：filesz 0x1000 -> memsz 0xD0A0（13.0x）
 #   => LOAD 0x000000 0x0000e000 ... 0x040a2 0x040a2 R E   ← stub 段；0x11684 落在它里面（F4）
 #   =>（Section to Segment mapping 全空——没有节可映射）
 
 # B13 样本：e_type 仍是 DYN，但节头表偏移与数量都被清零
-readelf -h libtarget_stripped.so
+readelf -h samples/so/libtarget_stripped.so
 #   => Type: DYN (Shared object file)
 #   => Start of section headers: 0 (bytes into file)   ← 与 orig 的 42928 对比
 #   => Number of section headers: 0
-readelf -S libtarget_stripped.so
+readelf -S samples/so/libtarget_stripped.so
 #   => There are no sections in this file.
-readelf -S libtarget_360.so
+readelf -S samples/so/libtarget_360.so
 #   => There are no sections in this file.              ← 加壳样本同样无节（F1 的另一面）
 ```
 
@@ -108,24 +108,24 @@ readelf -S libtarget_360.so
 
 ```bash
 # 偏移 0x98（stub 代码区）：标准 UPX! vs 变种 JG!!
-xxd -s 0x90 -l 32 libtarget_360.so
+xxd -s 0x90 -l 32 samples/so/libtarget_360.so
 #   00000090: 0000 0000 5a64 6ac0 5550 5821 300a 0e17  ....Zdj.UPX!0...
-xxd -s 0x90 -l 32 libtarget_360_variant.so
+xxd -s 0x90 -l 32 samples/so/libtarget_360_variant.so
 #   00000090: 0000 0000 5a64 6ac0 4a47 2121 300a 0e17  ....Zdj.JG!!0...
 #                                  ^^^^^^^^^^^^ 5550 5821 -> 4a47 2121（4 字节全改）
 
 # 偏移 0x3cfb（stub 代码区第二处）
-xxd -s 0x3cf8 -l 16 libtarget_360.so
+xxd -s 0x3cf8 -l 16 samples/so/libtarget_360.so
 #   00003cf8: 57fb dfb9 7b97 e3c7 f0b7 7e55 5058 21f0  W...{.....~UPX!.
-xxd -s 0x3cf8 -l 16 libtarget_360_variant.so
+xxd -s 0x3cf8 -l 16 samples/so/libtarget_360_variant.so
 #   00003cf8: 57fb dfb9 7b97 e3c7 f0b7 7e4a 4721 21f0  W...{.....~JG!!.
 
 # 偏移 0x45cf / 0x45d8（尾部结构两处；连带看 sz_unc 字段）
-xxd -s 0x45c0 -l 48 libtarget_360.so
+xxd -s 0x45c0 -l 48 samples/so/libtarget_360.so
 #   000045c0: 729d 0156 0000 0000 0009 ff00 0000 0055  r..V...........U
 #   000045d0: 5058 2100 0000 0000 5550 5821 0e17 0308  PX!.....UPX!....
 #   000045e0: 86a0 ab0c 54b5 79be 70ab 0000 d845 0000  ....T.y.p....E..
-xxd -s 0x45c0 -l 48 libtarget_360_variant.so
+xxd -s 0x45c0 -l 48 samples/so/libtarget_360_variant.so
 #   000045c0: 729d 0156 0000 0000 0009 ff00 0000 004a  r..V...........J
 #   000045d0: 4721 2100 0000 0000 4a47 2121 0e17 0308  G!!.....JG!!....
 #   000045e0: 86a0 ab0c 54b5 79be 70ab 0000 d845 0000  ....T.y.p....E..
@@ -138,9 +138,9 @@ xxd -s 0x45c0 -l 48 libtarget_360_variant.so
 
 ```bash
 # 纯标准库手算整文件熵，结果应与 detect_360.py 输出一致（两者互为校验）
-python -c "import math,collections;d=open('libtarget_360.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
+python -c "import math,collections;d=open('samples/so/libtarget_360.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
 #   => entropy=7.598
-python -c "import math,collections;d=open('libtarget_orig.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
+python -c "import math,collections;d=open('samples/so/libtarget_orig.so','rb').read();c=collections.Counter(d);n=len(d);print('entropy=%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"
 #   => entropy=5.011
 ```
 
@@ -148,7 +148,7 @@ python -c "import math,collections;d=open('libtarget_orig.so','rb').read();c=col
 
 ```bash
 # 明文标记在 stub 的版本串里（0x37d5 起），不在尾部——尾部追加字节会破坏 UPX
-python -c "d=open('libtarget_360.so','rb').read();print(d[0x37d5:0x37d5+40].decode('ascii','replace'))"
+python -c "d=open('samples/so/libtarget_360.so','rb').read();print(d[0x37d5:0x37d5+40].decode('ascii','replace'))"
 #   => $Id: 360 4.24 Copyright (C) 1996-2024 the UPX Team. All Righ
 ```
 
@@ -158,7 +158,7 @@ python -c "d=open('libtarget_360.so','rb').read();print(d[0x37d5:0x37d5+40].deco
 
 ```bash
 # upx_probe.py = 批量 upx -t/-l/-d 的包装（一次看清四个样本谁可自动解包）
-python tools/upx_probe.py libtarget_orig.so libtarget_360.so libtarget_360_variant.so libtarget_stripped.so
+python tools/upx_probe.py samples/so/libtarget_orig.so samples/so/libtarget_360.so samples/so/libtarget_360_variant.so samples/so/libtarget_stripped.so
 #   => orig:   upx -t FAIL (rc=2)   -- 需要手工/动态脱壳
 #   => 360:    upx -t OK;  -l 显示 43888 -> 17916 40.82% linux/arm;  -d OK -> 43888 bytes
 #   => variant: upx -t FAIL (rc=2)   -- 需要手工/动态脱壳
@@ -173,9 +173,9 @@ python tools/upx_probe.py libtarget_orig.so libtarget_360.so libtarget_360_varia
 
 ```bash
 # -t 先验证可解（校验和过不过），-d 解出到指定文件
-./upx.exe -t libtarget_360.so
-#   => testing libtarget_360.so [OK]   /   Tested 1 file.
-./upx.exe -d libtarget_360.so -o out.so
+./upx.exe -t samples/so/libtarget_360.so
+#   => testing samples/so/libtarget_360.so [OK]   /   Tested 1 file.
+./upx.exe -d samples/so/libtarget_360.so -o out.so
 #   => 43889 <- 17916   40.82%   linux/arm   out.so /   Unpacked 1 file.
 ```
 
@@ -185,12 +185,12 @@ python tools/upx_probe.py libtarget_orig.so libtarget_360.so libtarget_360_varia
 
 ```bash
 # 先实证确认真魔数（静态候选有巧合项，必须 upx -t 实证）
-python tools/detect_360.py libtarget_360_variant.so --verify
+python tools/detect_360.py samples/so/libtarget_360_variant.so --verify
 #   => b'JG!!' x4 -> upx -t OK   <= 真魔数；其余 \x00\x00p\xab 等候选均 FAIL
 
 # 命令行等价的"十六进制编辑器手改"：把 4 处偏移各 4 字节还原成 UPX!
 python -c "
-d=bytearray(open('libtarget_360_variant.so','rb').read())
+d=bytearray(open('samples/so/libtarget_360_variant.so','rb').read())
 for o in (0x98,0x3cfb,0x45cf,0x45d8): d[o:o+4]=b'UPX!'
 open('fixed.so','wb').write(d)"
 #   => 无输出；fixed.so = 17916 字节（体积不变，只改 16 字节）
@@ -208,7 +208,7 @@ open('fixed.so','wb').write(d)"
 
 ```bash
 # simulate_dump 按 PT_LOAD 生成"运行态内存镜像"，dump_fix 重建可载入的 ELF
-python tools/simulate_dump.py libtarget_orig.so analysis_output/sim_dump.bin
+python tools/simulate_dump.py samples/so/libtarget_orig.so analysis_output/sim_dump.bin
 #   => [+] simulated dump -> analysis_output/sim_dump.bin  base=0x0 size=53408 (from 4 PT_LOAD, 32-bit)
 python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_fixed.so --arch arm
 #   => [+] wrote analysis_output/dump_fixed.so: base=0x0 size=53408 arch=arm entry=0x0
@@ -220,7 +220,7 @@ python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_f
 
 ```bash
 # 判据 1：体积恢复
-ls -l libtarget_orig.so unpacked.so
+ls -l samples/so/libtarget_orig.so unpacked.so
 #   => 两边都是 43888 字节
 
 # 判据 2：锚点找回（8 个锚点在脱壳产物里逐个 grep）
@@ -231,10 +231,10 @@ for a in ['360jiagu_lab_payload_marker_v1','JiaguLab-2026-SECRET-KEY','flag{jiag
 #   => 8 行全 OK
 
 # 判据 3：字节一致（sha256 定变化、cmp 定位差异）
-sha256sum libtarget_orig.so unpacked.so
-#   => 47b3f17d...  libtarget_orig.so
+sha256sum samples/so/libtarget_orig.so unpacked.so
+#   => 47b3f17d...  samples/so/libtarget_orig.so
 #   => 5f5a2089...  unpacked.so        ← 哈希不同：有 e_type 一处差异
-cmp -l libtarget_orig.so unpacked.so
+cmp -l samples/so/libtarget_orig.so unpacked.so
 #      17   3   2     ← 全文件唯一差异：1-based 第 17 字节 = 偏移 16 的 e_type（03=ET_DYN vs 02=ET_EXEC）
 ```
 
@@ -288,22 +288,22 @@ python tools/reset_lab.py status
 
 ```bash
 # 判定（字节级依据）
-readelf -h libtarget_360.so                 # e_type / e_entry / e_shnum 三联读
-readelf -l libtarget_360.so                 # PT_LOAD FileSiz vs MemSiz（解压缓冲）
-readelf -S libtarget_stripped.so            # There are no sections（B13/F1）
-xxd -s 0x90 -l 32 libtarget_360.so           # 魔数第一处（0x98）
-xxd -s 0x3cf8 -l 16 libtarget_360_variant.so # 魔数第二处（0x3cfb）
-xxd -s 0x45c0 -l 48 libtarget_360_variant.so # 尾部两处（0x45cf/0x45d8）+ sz_unc 70ab
-python -c "import math,collections;d=open('libtarget_360.so','rb').read();c=collections.Counter(d);n=len(d);print('%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"  # 熵手算 => 7.598
+readelf -h samples/so/libtarget_360.so                 # e_type / e_entry / e_shnum 三联读
+readelf -l samples/so/libtarget_360.so                 # PT_LOAD FileSiz vs MemSiz（解压缓冲）
+readelf -S samples/so/libtarget_stripped.so            # There are no sections（B13/F1）
+xxd -s 0x90 -l 32 samples/so/libtarget_360.so           # 魔数第一处（0x98）
+xxd -s 0x3cf8 -l 16 samples/so/libtarget_360_variant.so # 魔数第二处（0x3cfb）
+xxd -s 0x45c0 -l 48 samples/so/libtarget_360_variant.so # 尾部两处（0x45cf/0x45d8）+ sz_unc 70ab
+python -c "import math,collections;d=open('samples/so/libtarget_360.so','rb').read();c=collections.Counter(d);n=len(d);print('%.3f'%(-sum(v/n*math.log2(v/n) for v in c.values())))"  # 熵手算 => 7.598
 
 # 脱壳
-./upx.exe -t libtarget_360.so && ./upx.exe -d libtarget_360.so -o out.so
-python -c "d=bytearray(open('libtarget_360_variant.so','rb').read());[d.__setitem__(slice(o,o+4),b'UPX!') for o in (0x98,0x3cfb,0x45cf,0x45d8)];open('fixed.so','wb').write(d)"
+./upx.exe -t samples/so/libtarget_360.so && ./upx.exe -d samples/so/libtarget_360.so -o out.so
+python -c "d=bytearray(open('samples/so/libtarget_360_variant.so','rb').read());[d.__setitem__(slice(o,o+4),b'UPX!') for o in (0x98,0x3cfb,0x45cf,0x45d8)];open('fixed.so','wb').write(d)"
 ./upx.exe -t fixed.so && ./upx.exe -d fixed.so -o unpacked.so
 
 # 验证
-sha256sum libtarget_orig.so unpacked.so
-cmp -l libtarget_orig.so unpacked.so        # => 仅 1 处：17 列 03 vs 02（e_type）
+sha256sum samples/so/libtarget_orig.so unpacked.so
+cmp -l samples/so/libtarget_orig.so unpacked.so        # => 仅 1 处：17 列 03 vs 02（e_type）
 
 # 回归 / 复位
 python tools/check_so_samples.py            # => 0 项失败
