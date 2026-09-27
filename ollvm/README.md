@@ -101,11 +101,20 @@ Get-FileHash $apk -Algorithm SHA256
 ```text
 SCRIPT.md / CLI.md / GUI.md            三份平行文档（同一章节骨架，工程根）
 samples/apks/                          分析对象 APK（归档副本，哈希见文档）
+pristine/                              samples/ 的 sha256 基线备份（reset 的还原源）
 app/src/main/java/.../MainActivity.java  Java 入口、明文和 Java XOR 样例
 app/src/main/cpp/native-lib.cpp          JNI XOR 与 native 控制流基线
 build/                                  构建脚本：build.ps1 / bootstrap.ps1
-tools/                                  分析工具：analyze-apk.ps1 / inspect-native.ps1 / logcat.ps1 + gradle-8.13（gitignore）
+tools/                                  分析工具：analyze-apk.ps1 / inspect-native.ps1 / logcat.ps1 / reset_lab.py + gradle-8.13（gitignore）
 frida/frida-hook.js                     动态 hook 脚本
 analysis_output/                        练习产物（解包/反汇编输出，gitignore）
 ollvm/toolchains/                       外部 OLLVM fork 接入说明
+```
+
+## 反复练习
+
+```powershell
+python tools\reset_lab.py backup    # 首次：把 samples/ 备份进 pristine/（含 sha256 清单）
+python tools\reset_lab.py status    # 查看样本是否被改动、产物目录是否干净
+python tools\reset_lab.py restore   # 还原样本 + 清空 analysis_output/
 ```

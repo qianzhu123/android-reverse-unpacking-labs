@@ -1,0 +1,15 @@
+{
+  "files": {
+    "apks/app-debug.apk": {
+      "sha256": "06935b0b8f0eef249e2d202e2059141b389f7f5760788024ef1175fc1def045e",
+      "size": 1371508
+    },
+    "apks/app-release-unsigned.apk": {
+      "sha256": "b02aef06944b280b84d4e32edaf5c19bd6edc353d8fa3c60c89ff66d93e794cd",
+      "size": 1204141
+    }
+  },
+  "config": {
+    "clean_dir": "analysis_output"
+  }
+}

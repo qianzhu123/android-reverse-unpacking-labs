@@ -51,12 +51,15 @@ frida -U -f com.example.ollvmlab -l .\frida\frida-hook.js --no-pause
 ```text
 tools\analyze-apk.ps1    APK 解包：apktool d + jadx + aapt2 dump badging
 tools\inspect-native.ps1 ELF 检查：llvm-readelf/-objdump/-strings，筛 JNI 符号与解码循环
+tools\reset_lab.py       备份/还原练习环境（backup / status / restore）
 build\bootstrap.ps1      环境初始化：JDK 21 + Gradle 8.13 + SDK/NDK 路径打印
 build\build.ps1          构建 assembleDebug/Release，可选 -Install 直装
 tools\logcat.ps1         清空并只看 OLLVM_LAB tag 的 logcat
 frida\frida-hook.js      Frida hook：Java native 方法返回边界取值
-analysis_output\              脚本输出目录（生成物，已 .gitignore）
-ollvm\toolchains\             外部 OLLVM fork 接入说明（占位，未启用）
+samples\apks\            分析对象 APK（归档副本）
+pristine\                samples/ 的 sha256 基线备份（reset 的还原源）
+analysis_output\         脚本输出目录（生成物，已 .gitignore）
+ollvm\toolchains\        外部 OLLVM fork 接入说明（占位，未启用）
 ```
 
 ## 环境与工具
@@ -409,6 +412,30 @@ UI/日志/网络等 sink：
 是否启用 OLLVM pass：
 静态复杂度与动态成本变化：
 ```
+
+## 反复练习
+
+练习产物都写进 `analysis_output\`（解包、反汇编输出），样本基线在 `pristine\`。想从头再来时：
+
+```powershell
+python tools\reset_lab.py status    # 先看：样本是否被改动、产物目录是否干净
+#   => [一致] apks/app-debug.apk ... / [一致] apks/app-release-unsigned.apk ...
+#   => 输出目录 analysis_output/: N 个条目
+#   => 当前环境: 干净 / 有练习残留
+
+python tools\reset_lab.py restore   # 还原 samples\ 中的 APK + 清空 analysis_output\
+#   => [还原] apks/app-debug.apk ... / [清空] analysis_output/
+```
+
+首次使用（或重新构建 APK 后刷新基线）：
+
+```powershell
+python tools\reset_lab.py backup    # 递归把 samples\ 纳入基线，写 pristine\manifest.json
+#   => [backup] apks/app-debug.apk  1371508 bytes
+#   => [backup] apks/app-release-unsigned.apk  1204141 bytes
+```
+
+这几条命令分别干什么：`backup` 把 `samples\` 下所有文件复制进 `pristine\` 并记 sha256 清单（manifest 的 key 以 `samples\` 为根）；`status` 逐文件对比哈希并列出产物目录状态；`restore` 从 `pristine\` 还原样本并整体清空 `analysis_output\`。实跑验证过 backup→status（两文件一致）→restore（还原成功，debug APK 哈希仍为 `0693...`）整条链路。
 
 ## 踩坑 / 速查
 
