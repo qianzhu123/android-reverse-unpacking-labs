@@ -90,7 +90,25 @@ compileSdk（当前配置）：35
 NDK：D:\tools\Security\Reverse\Android\dev\android-ndk-r27d
 ```
 
-`local.properties.example` 是换机器时的路径模板；真实 `local.properties` 已被 `.gitignore` 忽略。脚本内写死的 JDK/apktool/NDK 路径如果换机要同步改（`bootstrap.ps1`、`analyze-apk.ps1`、`inspect-native.ps1` 各一处）。
+`app\local.properties.example` 是换机器时的路径模板；真实 `local.properties` 已被 `.gitignore` 忽略。脚本内写死的 JDK/apktool/NDK 路径如果换机要同步改（`bootstrap.ps1`、`analyze-apk.ps1`、`inspect-native.ps1` 各一处）。
+
+### 什么时候才需要重新构建
+
+仓库已经包含可直接分析的 APK（`samples\apks\`），默认不需要重新编译。只有修改了 Java/C++、需要新的 ABI，或要接入自己的 OLLVM fork 时才构建：
+
+```powershell
+.\build\build.ps1 -Variant debug        # debug 变体（assembleDebug）
+#   => BUILD SUCCESSFUL；产物 app\build\outputs\apk\debug\app-debug.apk
+
+.\build\build.ps1 -Variant release      # release 变体（unsigned）
+.\build\build.ps1 -Variant debug -Install   # 构建后直装已授权测试设备并启动
+```
+
+构建脚本会优先使用项目内的 Gradle 8.13（`tools\gradle-8.13`，缺失时 `bootstrap.ps1` 自动下载）和写死的 JDK 21。gradle 工程根在 `app\`（settings/build.gradle 都在那里）。**注意**：重新构建后 APK 哈希会变（打包时间戳参与 zip），但 arm64 SO 内容与归档基线一致（实测重构建后 SO sha256 仍为 `555B4EE7...`）；文档记录的哈希以 `samples\apks\` 归档副本为准，重新构建后应刷新 `pristine\` 基线（`python tools\reset_lab.py backup`）。
+
+### 安全边界
+
+只在自己编写的 APK、自己拥有的设备和明确授权的测试环境中使用这些方法。XOR 字符串保护和 OLLVM 都不能把客户端秘密变成不可提取的秘密：只要客户端必须得到明文，调试器、Frida、日志或内存取证就可能在运行时拿到它。真实项目应避免把长期有效的密钥放进 APK，改用服务端校验、短期令牌、轮换和最小权限。
 
 ## 知识点
 

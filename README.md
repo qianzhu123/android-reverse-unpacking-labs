@@ -76,9 +76,11 @@ android-reverse/
 └── ollvm/               # OLLVM / string-protection lab (code obfuscation)
     ├── SCRIPT.md  CLI.md  GUI.md
     ├── samples/apks/    # archived debug/release APKs (hashes in the docs)
-    ├── app/             # self-built app: Java plaintext / Java XOR / JNI XOR / nativeOpaque
+    ├── pristine/        # sha256 baseline of samples/ (reset_lab.py restore source)
+    ├── app/             # self-contained gradle project (gradle root lives here):
+    │                    #   Java plaintext / Java XOR / JNI XOR / nativeOpaque
     ├── build/           # build.ps1, bootstrap.ps1 (PowerShell toolchain)
-    ├── tools/           # analyze-apk.ps1, inspect-native.ps1, logcat.ps1
+    ├── tools/           # analyze-apk.ps1, inspect-native.ps1, logcat.ps1, reset_lab.py
     ├── frida/           # frida-hook.js (Java/native boundary hook)
     └── analysis_output/ # apktool / jadx unpack output (gitignored)
 ```

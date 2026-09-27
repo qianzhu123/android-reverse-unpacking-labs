@@ -1,4 +1,4 @@
-plugins { id 'com.android.application' }
+plugins { id 'com.android.application' version '8.13.0' }
 
 android { namespace 'com.example.ollvmlab'; compileSdk 35
     defaultConfig { applicationId 'com.example.ollvmlab'; minSdk 26; targetSdk 35; versionCode 1; versionName '1.0' }
@@ -8,4 +8,10 @@ android { namespace 'com.example.ollvmlab'; compileSdk 35
     }
     externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
     ndkVersion '27.3.13750724'
+    // 产物名固定为 app-<variant>.apk，与三份文档引用的 samples\apks 归档名一致
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "app-${variant.name}.apk"
+        }
+    }
 }
