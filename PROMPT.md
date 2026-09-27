@@ -106,33 +106,41 @@ DEX 整体加密、类抽取、加固判定）。
        ```
        <项目名>/
        ├── SCRIPT.md / CLI.md / GUI.md   # 唯一的三份文档，工程根不再有其他 md
-       ├── samples/        # 分析对象（三栏：apks / dex / payloads，SO 工程用 so 栏）
+       ├── samples/        # 分析对象（四栏按用：apks / dex / payloads / native，SO 工程用 so/）
        │                    # 一切"被分析的文件"只住这里，禁止平铺到工程根
        ├── pristine/       # samples/ 的 sha256 基线备份（reset 的还原源）
-       ├── analysis_output/ # 练习产物（脱壳结果、报告、jadx 输出）只写这里
+       ├── analysis_output/ # 练习产物（脱壳结果、报告、jadx 输出、内存 dump）只写这里
        ├── src/            # 业务样本源码（.c/.cpp/.java/.xml 全部在此，含锚点）
        ├── shell/          # 壳源码（仿壳项目才有；纯 UPX 类工程不建）
        ├── neg/            # 负样本源码（有对抗式负样本的工程才有）
        ├── vmp/            # VMP 教学样本源码（有 VMP 样本的工程才有）
-       ├── tools/          # 本仓 Python 工具 + 锚点清单（anchors.txt）；只放 .py 和数据文件
+       ├── tools/          # 本仓 Python 工具 + 锚点清单（anchors.txt）+ 工具二进制（gitignore）
        ├── build/          # 构建脚本（*.sh / *.py / env.sh / env.sh.example），不放生成物
+       ├── app/            # 可运行 App 工程（动态验证"脱壳后能跑"时才有；完整 gradle 结构）
+       ├── frida/          # 动态 hook 脚本（走动态路线的工程才有；.js 按样本分文件）
        └── logs/           # 实操日志（可留空；不作为文档引用的依据）
        ```
        布局规则：
-       ① **样本必须进 `samples/`**：.so/.apk/dex/payload 一律住三栏子目录，
+       ① **样本必须进 `samples/`**：.so/.apk/dex/payload 一律住栏内子目录，
          工程根**禁止**出现 `libtarget_*.so`、`*.apk` 这类平铺样本。
+         四栏按内容落位：`apks/`=APK 分析对象，`dex/`=黄金/壳/抽取态/解出 dex，
+         `payloads/`=加密载荷/侧表/诱饵/策略表，`native/`=壳的附属 SO（壳的 native
+         组件、多 SO 执行链的中间 SO——不是被保护对象也不是 payload 的第三类 SO）；
+         纯 SO 工程用 `so/` 栏代替 `apks/` 栏，其余同。
        ② **源码必须进 `src/`（或 shell/ / neg/ / vmp/）**：工程根禁止散落 `.c/.java/.xml`。
-       ③ **产物只进 `analysis_output/`**：脱壳输出、dump、报告、jadx 反编译目录都写这里，
-         用后可整体清空（reset 会清）。
-       ④ **可选目录按需**：shell/ / neg/ / vmp/ 只在对应样本存在时建；没有就不建空目录。
-       ⑤ 工具二进制（upx.exe 等）放 `tools/` 并被 .gitignore 忽略；`samples/` `pristine/`
-         里的样本二进制是要提交的（它们是练习的"数据"，体积可控）。
+       ③ **产物只进 `analysis_output/`**：脱壳输出、dump、报告、jadx 反编译目录、
+         adb 拉取的内存镜像（`analysis_output/dumps/`）都写这里，用后可整体清空（reset 会清）。
+       ④ **可选目录按需**：shell/ / neg/ / vmp/ / app/ / frida/ 只在对应样本/路线存在时建；
+         没有就不建空目录。
+       ⑤ **工具二进制（upx.exe 等）放 `tools/` 并被 .gitignore 忽略**；多版本并存时
+         按版本命名（`tools/upx396.exe`、`tools/upx521.exe`），文档引用哪个写哪个；
+         `samples/` `pristine/` 里的样本二进制是要提交的（它们是练习的"数据"，体积可控）。
    - 固定章节骨架（照抄，不要自创编号）：三份文档共用同一套章节骨架，区别只在「手法」——
        SCRIPT.md 走脚本路线（本仓 tools/ 的 Python 代码实跑），
        CLI.md 走命令行路线（通用命令逐字节复现），
        GUI.md 走图形工具路线（jadx / IDA / 010 Editor 等的操作与判读）。
        概述：一句话定位 / 为什么自造样本（建模说明）/ 样本清单表 / 三分钟跑一遍（最小闭环命令 4~8 行）
-       工程结构 / 样本清单（三栏：apks / dex / payloads）
+       工程结构 / 样本清单（四栏按用：apks / dex / payloads / native；SO 工程 so/）
        知识点：每节固定五件套 —— 是什么 / 怎么看（结构特征+阈值）/ 验证手段 /
                   实测输出 / 失效边界；有样本标 [可验证]，纯理论标 [知识框架]
        判定：特征对照表 + 实跑输出 + 阈值设计踩过的坑
@@ -153,10 +161,13 @@ DEX 整体加密、类抽取、加固判定）。
      命令块后再写一段「这几条命令分别干什么」；让人不跑脚本也能看懂每一步在做什么。
 
 2. 样本（必须可复现）
-   - 样本目录固定三栏：`samples/apks/`（APK 分析对象）、`samples/dex/`（黄金/壳/解出 dex）、`samples/payloads/`（payload / 侧表 / 混淆资源）；脚本与文档一律用这三栏相对路径，不把不同类文件平铺在 `samples/` 根。
-     SO 类工程（无 APK）也要用 `samples/` 三栏容器：`samples/so/`（.so 分析对象）、
-     `samples/dex/` 留空或不用、`samples/payloads/`（壳 payload / 策略表等）；
-     **禁止把 .so 样本平铺在工程根**。
+   - 样本目录固定四栏：`samples/apks/`（APK 分析对象）、`samples/dex/`（黄金/壳/抽取态/解出 dex）、
+     `samples/payloads/`（加密载荷 / 侧表 / 诱饵 / 策略表）、`samples/native/`
+     （壳的附属 SO：壳的 native 组件、多 SO 执行链的中间 SO）；脚本与文档一律用四栏相对路径，
+     不把不同类文件平铺在 `samples/` 根。
+     SO 类工程（无 APK）用 `samples/so/`（.so 分析对象）代替 `apks/` 栏，其余栏同；
+     没有对应内容的栏不建空目录。
+     **禁止把 .so/.apk 样本平铺在工程根**。
    - 用本机 NDK 的 clang 从源码编译真实 Android .so，保证加壳前后出自同一份源码、
      代码与字符串一致，便于脱壳后逐字节对照。
    - 至少产出三种：原始 .so、标准加壳样本、变种样本（变种可通过改写特征生成）。
@@ -264,8 +275,8 @@ DEX 整体加密、类抽取、加固判定）。
 | 主题 | Android **壳与脱壳**（UPX/变种/压缩壳/内存 dump/OEP/ELF Fix/DEX 整体加密/类抽取） |
 | 不适用的主题 | 代码混淆 / 字符串保护 / VMP 教学 → 不用本提示词，单独写 |
 | 样本 | NDK clang 从源码编译，加壳前后同源，可逐字节对照 |
-| 样本目录 | `samples/apks/`(APK) · `samples/dex/`(对照/壳/解出 dex) · `samples/payloads/`(payload/侧表/混淆资源)；SO 工程用 `samples/so/`；样本禁止平铺工程根 |
-| 目录布局（硬性） | 工程根只允许：三份 md + samples/ + pristine/ + analysis_output/ + src/ + shell/ + neg/ + vmp/ + tools/ + build/ + logs/（可选目录按需）；样本进 samples/、源码进 src/、产物进 analysis_output/、构建脚本进 build/ |
+| 样本目录 | `samples/apks/`(APK) · `samples/dex/`(黄金/壳/抽取态/解出 dex) · `samples/payloads/`(载荷/侧表/诱饵/策略表) · `samples/native/`(壳附属 SO)；SO 工程用 `samples/so/` 代替 apks 栏；样本禁止平铺工程根 |
+| 目录布局（硬性） | 工程根只允许：三份 md + samples/ + pristine/ + analysis_output/ + src/ + 可选(shell/ neg/ vmp/ app/ frida/) + tools/ + build/ + logs/；样本进 samples/、源码进 src/、产物进 analysis_output/、构建脚本进 build/；工具二进制进 tools/(gitignore，多版本按版本命名) |
 | 判定 | 结构特征 + 量化阈值；禁靠文件名/单一字符串 |
 | 知识点写法 | 五件套：是什么 / 怎么看 / 验证脚本 / 实测输出 / 失效边界 |
 | 回退 | `pristine/` 备份 + `tools/reset_lab.py`（status / restore / backup） |
