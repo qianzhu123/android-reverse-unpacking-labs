@@ -187,14 +187,11 @@ Requirements:
        CLI.md: generic commands,
        GUI.md: graphical tools.
        Overview: one-line positioning / why self-built samples (modeling note) /
-                 sample-list table / three-minute run
-       The three-minute run is an **environment smoke test**: 4–8 commands that
-       prove the toolchain works end-to-end on the reader's machine and show the
-       minimal loop of this lab. It is NOT a summary of later chapters — each
-       command must be runnable as-is, and its expected output must be the
-       "it works" signal (green check / correct verdict), not teaching content.
-       Every command in it must belong to THIS document's route (see the
-       route-purity rule below); a CLI smoke test uses generic commands only.
+                 sample-list table
+         (No "three-minute run" section. The environment check is covered by
+         the docs themselves: the first command of every chapter is runnable
+         as-is with expected output. Docs open with the sample-list table and
+         go straight into the route's first real step.)
        Lab layout / sample list (four bins: apks / dex / payloads / native; SO: so/)
        Knowledge points: fixed five-part set per section — what it is / how to see it
                  (structural feature + threshold) / verification means / real output /
@@ -217,8 +214,8 @@ Requirements:
      apktool...) — invoking `python tools/*.py` inside CLI.md is forbidden (that is
      SCRIPT.md's route; where a number CLI commands cannot produce, CLI.md says so
      and points to SCRIPT.md instead of borrowing its scripts). GUI.md uses
-     graphical tools (jadx / IDA / 010 Editor / binwalk / apkid...); its smoke test
-     and steps likewise never invoke `tools/*.py`. SCRIPT.md is the only document
+     graphical tools (jadx / IDA / 010 Editor / binwalk / apkid...); its steps
+     likewise never invoke `tools/*.py`. SCRIPT.md is the only document
      that runs this repo's Python tools. Cross-references between documents are
      fine; cross-execution is not.
    - Every chapter states "what to do / what you should see / why" — conclusions alone
