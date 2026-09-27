@@ -101,6 +101,32 @@ DEX 整体加密、类抽取、加固判定）。
                      等通用命令逐字节复现每一步。
        `GUI.md`   —— 图形工具路线：jadx / IDA / Ghidra / 010 Editor / GDA / JEB / binwalk(熵曲线)
                      / apkid 等工具在对应步骤的操作与判读。
+   - **固定目录布局（硬性，照抄，不自创）**——每个工程根目录**只有**以下条目，
+     新增任何目录/平铺文件前先检查是否落进下面某一格，落不进就不该建：
+       ```
+       <项目名>/
+       ├── SCRIPT.md / CLI.md / GUI.md   # 唯一的三份文档，工程根不再有其他 md
+       ├── samples/        # 分析对象（三栏：apks / dex / payloads，SO 工程用 so 栏）
+       │                    # 一切"被分析的文件"只住这里，禁止平铺到工程根
+       ├── pristine/       # samples/ 的 sha256 基线备份（reset 的还原源）
+       ├── analysis_output/ # 练习产物（脱壳结果、报告、jadx 输出）只写这里
+       ├── src/            # 业务样本源码（.c/.cpp/.java/.xml 全部在此，含锚点）
+       ├── shell/          # 壳源码（仿壳项目才有；纯 UPX 类工程不建）
+       ├── neg/            # 负样本源码（有对抗式负样本的工程才有）
+       ├── vmp/            # VMP 教学样本源码（有 VMP 样本的工程才有）
+       ├── tools/          # 本仓 Python 工具 + 锚点清单（anchors.txt）；只放 .py 和数据文件
+       ├── build/          # 构建脚本（*.sh / *.py / env.sh / env.sh.example），不放生成物
+       └── logs/           # 实操日志（可留空；不作为文档引用的依据）
+       ```
+       布局规则：
+       ① **样本必须进 `samples/`**：.so/.apk/dex/payload 一律住三栏子目录，
+         工程根**禁止**出现 `libtarget_*.so`、`*.apk` 这类平铺样本。
+       ② **源码必须进 `src/`（或 shell/ / neg/ / vmp/）**：工程根禁止散落 `.c/.java/.xml`。
+       ③ **产物只进 `analysis_output/`**：脱壳输出、dump、报告、jadx 反编译目录都写这里，
+         用后可整体清空（reset 会清）。
+       ④ **可选目录按需**：shell/ / neg/ / vmp/ 只在对应样本存在时建；没有就不建空目录。
+       ⑤ 工具二进制（upx.exe 等）放 `tools/` 并被 .gitignore 忽略；`samples/` `pristine/`
+         里的样本二进制是要提交的（它们是练习的"数据"，体积可控）。
    - 固定章节骨架（照抄，不要自创编号）：三份文档共用同一套章节骨架，区别只在「手法」——
        SCRIPT.md 走脚本路线（本仓 tools/ 的 Python 代码实跑），
        CLI.md 走命令行路线（通用命令逐字节复现），
@@ -128,6 +154,9 @@ DEX 整体加密、类抽取、加固判定）。
 
 2. 样本（必须可复现）
    - 样本目录固定三栏：`samples/apks/`（APK 分析对象）、`samples/dex/`（黄金/壳/解出 dex）、`samples/payloads/`（payload / 侧表 / 混淆资源）；脚本与文档一律用这三栏相对路径，不把不同类文件平铺在 `samples/` 根。
+     SO 类工程（无 APK）也要用 `samples/` 三栏容器：`samples/so/`（.so 分析对象）、
+     `samples/dex/` 留空或不用、`samples/payloads/`（壳 payload / 策略表等）；
+     **禁止把 .so 样本平铺在工程根**。
    - 用本机 NDK 的 clang 从源码编译真实 Android .so，保证加壳前后出自同一份源码、
      代码与字符串一致，便于脱壳后逐字节对照。
    - 至少产出三种：原始 .so、标准加壳样本、变种样本（变种可通过改写特征生成）。
@@ -235,7 +264,8 @@ DEX 整体加密、类抽取、加固判定）。
 | 主题 | Android **壳与脱壳**（UPX/变种/压缩壳/内存 dump/OEP/ELF Fix/DEX 整体加密/类抽取） |
 | 不适用的主题 | 代码混淆 / 字符串保护 / VMP 教学 → 不用本提示词，单独写 |
 | 样本 | NDK clang 从源码编译，加壳前后同源，可逐字节对照 |
-| 样本目录 | `samples/apks/`(APK) · `samples/dex/`(对照/壳/解出 dex) · `samples/payloads/`(payload/侧表/混淆资源) |
+| 样本目录 | `samples/apks/`(APK) · `samples/dex/`(对照/壳/解出 dex) · `samples/payloads/`(payload/侧表/混淆资源)；SO 工程用 `samples/so/`；样本禁止平铺工程根 |
+| 目录布局（硬性） | 工程根只允许：三份 md + samples/ + pristine/ + analysis_output/ + src/ + shell/ + neg/ + vmp/ + tools/ + build/ + logs/（可选目录按需）；样本进 samples/、源码进 src/、产物进 analysis_output/、构建脚本进 build/ |
 | 判定 | 结构特征 + 量化阈值；禁靠文件名/单一字符串 |
 | 知识点写法 | 五件套：是什么 / 怎么看 / 验证脚本 / 实测输出 / 失效边界 |
 | 回退 | `pristine/` 备份 + `tools/reset_lab.py`（status / restore / backup） |
@@ -251,3 +281,4 @@ DEX 整体加密、类抽取、加固判定）。
 | 静默残缺（禁止） | 「只看主 dex / 只处理第一条」要么泛化，要么检测到多余项就响亮告警 |
 | 文档-代码同步（硬性） | 文档里贴的**任何**工具输出必须当场重跑后贴入；工具判据/阈值/回归断言一变，先改文档再提交，严禁留旧输出（ajiami §3.5 曾犯：B11 上线后文档还贴着"漏报"旧输出） |
 | 存量工程迁移 | 早期交付的单 README 工程（如 360jiagu / upx_practice）：内容达标的可暂按原状发布，但下次大改时必须顺势拆成 SCRIPT.md + CLI.md + GUI.md 三文档并对齐章节骨架；新工程一律直接用三文档，禁止再交付单 README。ajiami 已有两文档（SCRIPT/MANUAL）：下次大改时 MANUAL.md 改名 CLI.md、把其中 jadx/binwalk/010 Editor 等 GUI 内容抽出并扩充为 GUI.md |
+| 存量目录整理 | 360jiagu / upx_practice 当前把 .so 样本平铺在工程根、ajiami 的 neg/ / vmp/ 源码布局与 src/ 并列——下次触碰对应工程时按「固定目录布局」顺势归位（.so 迁入 samples/so/、pristine 清单同步重算、文档命令路径同步改）；一次性做完并跑回归，不做零碎迁移 |
