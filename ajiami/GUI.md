@@ -9,31 +9,10 @@
 
 ---
 
-## 概述与三分钟跑一遍
+## 概述
 
 **项目定位**：同 `SCRIPT.md` ——用自造「类爱加密」样本，把 DEX 加固三代演化的判定与脱壳全链路搬到本地。
 **建模说明与循环论证风险**：同 `SCRIPT.md`「为什么自造样本」。
-
-### 三分钟跑一遍（图形工具版 · 三代各看一眼）
-
-```bash
-cd ajiami
-
-# ① 一代：jadx 反编译——业务类整体消失，只剩壳类（B6 的可读形态）
-jadx -d /tmp/jadx_v1 --no-res samples/apks/app_packed_v1.apk
-#   => sources/ 下只有 com.ijiami.shell.* 六个壳类 + R.java，没有任何 com.demo.target 业务类
-
-# ② VMP 样本：jadx 反编译——方法退化成解释器调用（B11 的可读形态）
-jadx -d /tmp/jadx_vmp --no-res samples/apks/app_vmp.apk
-#   => VmBusiness.mix 只剩 Vmp.run(PROG_MIX, ...) 一行，真实逻辑进了 byte[] 字节码
-
-# ③ 熵曲线：binwalk -E 看 payload 的整体分布（数值判定见 CLI「判定 · 一代」）
-unzip -o -q samples/apks/app_packed_v1.apk assets/ijm_payload.bin -d /tmp/bw
-binwalk -E -p /tmp/bw/payload_entropy.png /tmp/bw/assets/ijm_payload.bin
-#   => Plotly 熵曲线：全程高位波动（≈7.9）= 加密数据；若前段低后段高则是"明文头 + 密文体"
-```
-
-三步各看一个形态：① 「类没了」、② 「方法空了但不是 nop」、③ 「数据是加密的」。三代判定的量化结论拿法见 `SCRIPT.md` / `CLI.md`，本文档负责让你**亲眼看到**这些结论长什么样。
 
 ### 文件与样本索引
 

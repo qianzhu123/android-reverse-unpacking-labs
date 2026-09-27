@@ -1,7 +1,7 @@
-# CLI.md — 命令行路线：用 xxd / readelf / sha256sum 逐字节复现每一步
+# CLI.md — 命令行路线：用 xxd / llvm-readelf / sha256sum 逐字节复现每一步
 
 > 本文件与 `SCRIPT.md`、`GUI.md` **结构完全平行**（同一套章节骨架一一对应），只讲「命令行怎么做」。
-> 命令行工具用 **xxd / readelf / upx / sha256sum / cmp / grep**——目的是**亲手走一遍脚本做的每一步**，
+> 命令行工具用 **xxd / llvm-readelf / upx / sha256sum / cmp / grep**——目的是**亲手走一遍脚本做的每一步**，
 > 而不是只会跑脚本。配套的一键脚本见 `SCRIPT.md`；图形工具（010 Editor / IDA / binwalk）见 `GUI.md`。
 >
 > 所有命令单行书写、完整可复制，每行配行内注释 + `# =>` 预期输出；输出片段全部实跑后贴入。
@@ -9,41 +9,9 @@
 
 ---
 
-## 概述与三分钟跑一遍
+## 概述
 
 **项目定位 / 建模说明**：同 `SCRIPT.md`——标准 UPX 官方打包、变种由 `make_variant.py` 抹特征生成，样本自同一份源码 NDK 编译，可逐字节对照。
-
-### 三分钟跑一遍（命令行版 · 全部样本形态）
-
-```bash
-cd upx_practice
-
-# ① 判定入口：脚本给量化结论（数值依据就是下面的 xxd/readelf）
-python tools/detect_packer.py samples/so/libtarget_orig.so samples/so/libtarget_upx.so samples/so/libtarget_upx_variant.so samples/so/libtarget_stripped.so
-#   => orig 0 分 / 标准 16 分 / 变种 16 分 / stripped B13（逐项解读见「判定」）
-
-# ② xxd 直接看魔数：标准样本 4 处 UPX!，变种同位置变成 XXXX
-xxd -s 0x90 -l 32 samples/so/libtarget_upx.so
-#   => 00000090: 0000 0000 5a64 6ac0 5550 5821 300a 0e17  ....Zdj.UPX!0...
-xxd -s 0x90 -l 32 samples/so/libtarget_upx_variant.so
-#   => 00000090: 0000 0000 5a64 6ac0 5858 5858 300a 0e17  ....Zdj.XXXX0...
-
-# ③ readelf 看节头剥离（F1 / B13 的字节级事实）
-readelf -h samples/so/libtarget_orig.so          # => Number of section headers: 23（正常 NDK .so）
-readelf -h samples/so/libtarget_upx.so           # => Number of section headers: 0（加壳剥节头）
-readelf -h samples/so/libtarget_stripped.so      # => Type: DYN + section headers: 0（B13 形态）
-
-# ④ upx 直接操作：标准能解、变种不能
-./upx.exe -t samples/so/libtarget_upx.so         # => testing samples/so/libtarget_upx.so [OK]
-./upx.exe -d samples/so/libtarget_upx.so -o out.so && ./upx.exe -t samples/so/libtarget_upx_variant.so
-#   => Unpacked 1 file.（out.so=70012）/ 变种: NotPackedException: not packed by UPX
-
-# ⑤ 验证：与黄金样本逐字节对照
-sha256sum samples/so/libtarget_orig.so out.so && cmp -l samples/so/libtarget_orig.so out.so
-#   => 哈希不同（e_type 一处）；cmp 仅第 17 字节 1 处差异（03 vs 02）
-```
-
-五步走通就说明环境 OK：判定结论每一条都能落到 `xxd`/`readelf` 的字节读数上。`readelf` 在本机用 NDK 自带的 `llvm-readelf`（在 NDK 的 `toolchains/llvm/prebuilt/<host>/bin/` 下；`readelf` 名字同样可）。
 
 ---
 
@@ -59,49 +27,51 @@ sha256sum samples/so/libtarget_orig.so out.so && cmp -l samples/so/libtarget_ori
 
 | 判据 | 量化值 | 命令行看法 |
 |---|---|---|
-| F1 节区头剥离 | `e_shnum=0` | `readelf -h` 看 `Number of section headers` |
+| F1 节区头剥离 | `e_shnum=0` | `llvm-readelf -h` 看 `Number of section headers` |
 | F2 整文件熵 | orig 4.470 / 壳 7.309 | detect 输出，或 python 一行手算（见「判定」） |
-| F3 大解压缓冲 | `0x1000→0x13000` | `readelf -l` 看 PT_LOAD 的 FileSiz/MemSiz 列 |
-| F4 入口在 stub | `e_entry=0x1358C` | `readelf -h` 的 Entry point + `readelf -l` 对照段范围 |
+| F3 大解压缓冲 | `0x1000→0x13000` | `llvm-readelf -l` 看 PT_LOAD 的 FileSiz/MemSiz 列 |
+| F4 入口在 stub | `e_entry=0x1358C` | `llvm-readelf -h` 的 Entry point + `llvm-readelf -l` 对照段范围 |
 | F6/F8 魔数 | `UPX!`×4 / `XXXX`×4 | `xxd` 在 4 处偏移直接读字节 |
-| B13 | ET_DYN + `e_shnum=0` | `readelf -h` 两行联读 |
+| B13 | ET_DYN + `e_shnum=0` | `llvm-readelf -h` 两行联读 |
 | 验证 | 除 e_type 外 0 差异 | `sha256sum` + `cmp -l` |
 
 ---
 
 ## 判定
 
-### readelf 看头部与段（F1 / F3 / F4 / B13 的字节级依据）
+### llvm-readelf 看头部与段（F1 / F3 / F4 / B13 的字节级依据）
 
 ```bash
 # 原始 .so：节头完整、入口在段首、3 个 PT_LOAD 尺寸正常
-readelf -h samples/so/libtarget_orig.so
+llvm-readelf -h samples/so/libtarget_orig.so
 #   => Type: DYN / Entry point address: 0x0
 #   => Start of section headers: 69092 / Number of section headers: 23   ← 正常 NDK .so
-readelf -l samples/so/libtarget_orig.so
+llvm-readelf -l samples/so/libtarget_orig.so
 #   => LOAD 0x000000 0x00000000 ... 0x1043f 0x1043f R    ← filesz==memsz，无解压缓冲
 #   => LOAD 0x010440 0x00011440 ... 0x001e0 0x001e0 R E
 
 # 标准 UPX：3 个程序头、节头 0、入口在 stub 段、第一段 memsz 是 filesz 的 19 倍
-readelf -h samples/so/libtarget_upx.so
+llvm-readelf -h samples/so/libtarget_upx.so
 #   => Type: EXEC / Entry point address: 0x1358c
 #   => Number of section headers: 0     ← F1 命中
-readelf -l samples/so/libtarget_upx.so
+llvm-readelf -l samples/so/libtarget_upx.so
 #   => LOAD 0x000000 0x00000000 ... 0x01000 0x13000 RW   ← F3：filesz 0x1000 -> memsz 0x13000（19.0x）
 #   => LOAD 0x000000 0x00013000 ... 0x00faa 0x00faa R E   ← stub 段；0x1358C 落在它里面（F4）
 
 # B13 样本：e_type 仍是 DYN，但节头表偏移与数量都被清零
-readelf -h samples/so/libtarget_stripped.so
+llvm-readelf -h samples/so/libtarget_stripped.so
 #   => Type: DYN (Shared object file)
 #   => Start of section headers: 0 (bytes into file)   ← 与 orig 的 69092 对比
 #   => Number of section headers: 0
-readelf -S samples/so/libtarget_stripped.so
+llvm-readelf -S samples/so/libtarget_stripped.so
 #   => There are no sections in this file.
-readelf -S samples/so/libtarget_upx.so
+llvm-readelf -S samples/so/libtarget_upx.so
 #   => There are no sections in this file.              ← 加壳样本同样无节（F1 的另一面）
 ```
 
-**逐行判读**：`readelf -h` 一次回答「是不是 DYN / 入口在哪 / 有没有节头」三件事；`readelf -l` 的 MemSiz 列远大于 FileSiz 即解压缓冲。注意 B13 与「UPX 加壳」的区分点：**B13 样本 e_type 仍是 ET_DYN**，加壳样本被 pack.sh 临时改成了 ET_EXEC——所以"无节头"要联读 e_type 才能分类。
+**逐行判读**：`llvm-readelf -h` 一次回答「是不是 DYN / 入口在哪 / 有没有节头」三件事；`llvm-readelf -l` 的 MemSiz 列远大于 FileSiz 即解压缓冲。注意 B13 与「UPX 加壳」的区分点：**B13 样本 e_type 仍是 ET_DYN**，加壳样本被 pack.sh 临时改成了 ET_EXEC——所以"无节头"要联读 e_type 才能分类。
+
+普通程序里 memsz > filesz 是常态——多出来的就是 .bss（未初始化的全局变量区），它不占文件体积。
 
 ### xxd 定位魔数（F6 / F8，4 处偏移）
 
@@ -236,7 +206,7 @@ cmp -l samples/so/libtarget_orig.so unpacked.so
 
 ```
 命令行版判定顺序（结论与 SCRIPT.md 相同，这里给出每步用的命令）：
-  readelf -h <file>
+  llvm-readelf -h <file>
  ├─ ET_DYN + 节头 23 完整 ──► 结构正常；再手算熵（≈4.5）确认 → 未见已知特征（≠未加壳）
  ├─ ET_EXEC + 节头 0 ────────► upx -t
  │     ├─ OK ───────────────► 标准 UPX：直接 upx -d
@@ -266,7 +236,7 @@ python tools/reset_lab.py status
 
 ### 踩坑（命令行 / 工具侧）
 
-1. **本机没有独立 `readelf`**：用 NDK 自带的 `llvm-readelf`（`toolchains/llvm/prebuilt/<host>/bin/` 下），参数兼容 GNU readelf；四档探测见 `build/locate.sh`。
+1. **本机没有独立 `readelf`，只有 `llvm-readelf`**：NDK 的 `toolchains/llvm/prebuilt/<host>/bin/` 已在 PATH 里，本文命令直接用 `llvm-readelf`（参数兼容 GNU readelf，装了 GNU 版也可换名）；路径不在 PATH 时按四档探测（`build/locate.sh`）。
 2. **`cmp -l` 是 1-based**：输出 `17` 对应 0 偏移 16（e_type），写文档/断言时别写成"第 16 字节"。
 3. **`--android-shlib` 是 UPX 3.x 的旧选项**：4.2.4 已移除；本机实测 3.96 带 `--android-shlib` 打包 ET_DYN 仍报 `NotCompressibleException`——对 Android `.so` 别指望这个选项，正确姿势是 pack.sh 的「临时改 ET_EXEC」。
 4. **xxd 的 `-s` 是十六进制**：`-s 0x14a0` 从偏移 5280 开始；等宽窗口（`-l 68`）对齐到 16 字节边界便于对照。
@@ -279,9 +249,9 @@ python tools/reset_lab.py status
 
 ```bash
 # 判定（字节级依据）
-readelf -h samples/so/libtarget_upx.so                 # e_type / e_entry / e_shnum 三联读
-readelf -l samples/so/libtarget_upx.so                 # PT_LOAD FileSiz vs MemSiz（解压缓冲）
-readelf -S samples/so/libtarget_stripped.so            # There are no sections（B13/F1）
+llvm-readelf -h samples/so/libtarget_upx.so                 # e_type / e_entry / e_shnum 三联读
+llvm-readelf -l samples/so/libtarget_upx.so                 # PT_LOAD FileSiz vs MemSiz（解压缓冲）
+llvm-readelf -S samples/so/libtarget_stripped.so            # There are no sections（B13/F1）
 xxd -s 0x90 -l 32 samples/so/libtarget_upx.so           # 魔数第一处（0x98）
 xxd -s 0xc00 -l 16 samples/so/libtarget_upx_variant.so  # 魔数第二处（0xc03）
 xxd -s 0x14a0 -l 68 samples/so/libtarget_upx_variant.so # 尾部两处（0x14b8/0x14c0）+ sz_unc 7c110100

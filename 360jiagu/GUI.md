@@ -13,31 +13,9 @@
 
 ---
 
-## 概述与三分钟跑一遍
+## 概述
 
 **项目定位 / 建模说明**：同 `SCRIPT.md`。
-
-### 三分钟跑一遍（图形工具版 · 三步各看一个形态）
-
-```bash
-cd 360jiagu
-
-# ① 010 Editor：改 4 处魔数（解法 A 的 GUI 版，对应 CLI 的 xxd/手改字节）
-#    打开 samples/so/libtarget_360_variant.so -> Ctrl+G 跳 0x98/0x3cfb/0x45cf/0x45d8
-#    -> 各把 4 字节 4A 47 21 21 改成 55 50 58 21 -> 另存 fixed.so
-#    => ./upx.exe -t fixed.so 报 [OK]（改前是 not packed by UPX）
-
-# ② IDA/Ghidra：看脱壳产物调用链（解法 B 的验证形态）
-#    载入 analysis_output/solve_unpacked.so -> Exports 里 JNI_OnLoad
-#    -> Imports/交叉引用 RegisterNatives -> getFlag -> check_license
-#    => 对照壳样本：载入 samples/so/libtarget_360.so 时 IDA 看不到任何节名（e_shnum=0 的可读形态）
-
-# ③ binwalk：熵曲线（F2 的可视化）
-binwalk -E samples/so/libtarget_360.so
-#    => Plotly 熵曲线全程高位（≈7.6）；对 samples/so/libtarget_orig.so 则在 5 上下波动
-```
-
-三步各看一个形态：① 「魔数长什么样、改哪里」、② 「脱壳前后的调用链与节视图差异」、③ 「熵的高低位分布」。量化结论拿法见 `SCRIPT.md` / `CLI.md`，本档负责让你**亲眼看到**。
 
 ---
 
@@ -63,7 +41,7 @@ binwalk -E samples/so/libtarget_360.so
 
 ## 判定
 
-### 010 Editor 读结构（对应 CLI 的 readelf / xxd）
+### 010 Editor 读结构（对应 CLI 的 llvm-readelf / xxd）
 
 1. **打开**：010 Editor 拖入 `samples/so/libtarget_360.so`（或 File → Open）。
 2. **跑 ELF 模板**：菜单 `Templates → File Templates...` 选 `ELF/EXE (ELF64.bt / ELF.bt)`，`Run Template`（32 位样本选 ELF）。

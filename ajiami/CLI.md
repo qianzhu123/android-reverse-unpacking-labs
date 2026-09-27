@@ -11,43 +11,11 @@
 
 ---
 
-## 概述与三分钟跑一遍
+## 概述
 
 **项目定位**：同 `SCRIPT.md` ——用自造「类爱加密」样本，把 DEX 加固三代演化的判定与脱壳全链路搬到本地。
 **建模说明与循环论证风险**：同 `SCRIPT.md`「为什么自造样本」——商业加固无法离线复现，故从同一份源码自造壳与业务样本；自造样本必然对自造检测器「全对」，故强制配对抗式负样本 + 双向回归断言（见「一键批量 + 负样本回归」节）。
 **三条硬约束**（与脚本版一致）：先确定性规则再谈 LLM；基于 evidence（结构特征）；配置外置。
-
-### 三分钟跑一遍（命令行版 · 三代全覆盖最小闭环）
-
-```bash
-cd ajiami
-
-# ① 一代：拆包看条目——异常小的 classes.dex + assets/ 下莫名文件
-unzip -l samples/apks/app_packed_v1.apk
-#   => classes.dex 仅 6548 字节（异常小，只有壳）；assets/ijm_payload.bin 4532 字节（多出来的高熵文件）
-
-# ② 一代：读 Manifest，找被代理的 Application（壳类而非业务类）
-aapt2 dump xmltree --file AndroidManifest.xml samples/apks/app_packed_v1.apk > /tmp/manifest.txt
-grep -i "android:name" /tmp/manifest.txt | head
-#   => application 的 android:name="com.ijiami.shell.ProxyApplication"（壳类 → Application 被代理）
-#   => activity android:name="com.demo.target.MainActivity"（记下，要和 dex 类对比）
-
-# ③ 一代：算熵确认 payload 是加密/压缩（> 7.5 基本可认定）；熵值用本仓工具 apkutil.py entropy
-python tools/apkutil.py entropy samples/payloads/payload_v1.bin
-#   => 7.8690 bit/byte (4532 bytes)   ← 接近满熵，典型加密 payload
-#   （手算版一行命令见「判定 · 一代」节，结果应与工具一致——两者互为校验）
-
-# ④ 二代：拆包对比——classes.dex 不再极小（业务类都在），但多出侧表
-unzip -l samples/apks/app_packed_v2.apk
-#   => classes.dex 10284 字节（类都在！）+ assets/ijm_codes.bin 1174 字节（多出来的侧表）
-#   二代关键信号从「dex 小」变成「dex 里方法体被抽空」→ 用「判定 · 二代」节的 xxd 看 insns 是否全 0
-
-# ⑤ 三代：侧表改名 + 诱饵——文件名不可信，须按内容定位
-unzip -l samples/apks/app_packed_v3.apk
-#   => 侧表变成 assets/brand_res_v3.dat（资源名混淆）+ 多出低熵 config.txt（诱饵，骗"按熵找 payload"）
-```
-
-①–③ 定性「一代整体加密」；④ 看「类抽取」与一代的结构差异；⑤ 看「资源名混淆 + 诱饵」对文件名/熵判定的干扰。三代的逐步命令行复现见「判定」与「脱壳」两节。
 
 ### 文件与样本索引
 
@@ -111,15 +79,15 @@ Ajiami 是多层叠加：`DEX 保护`（整体加密/代码分离/函数抽取/�
 
 ### Java2CPP（Java → Native） **[知识框架]**
 Java → C++ → SO，DEX Java 代码减少、逻辑转 Native。**识别**：DEX 干净 + SO 庞大 + 业务减少 → 考虑 Java2CPP；判据 B12（native 占比 ≥ 30%）。本工程无样本，属知识框架。同样让 **B3 失效**。
-**可跑的检查（命令行）**：`unzip -l <apk>` 看 lib/ 下 SO 体积与 classes.dex 的比例；`strings <so> | head` 看 SO 里是否残留业务方法名（Java2CPP 转译常见痕迹）。
+**可跑的检查（命令行）**：`unzip -l <apk>` 看 lib/ 下 SO 体积与 classes.dex 的比例；`llvm-strings <so> | head` 看 SO 里是否残留业务方法名（Java2CPP 转译常见痕迹）。
 
 ### 双重 VMP（DEX VMP + SO VMP） **[知识框架]**
 `Java/Dex → DEX VMP → Native → SO VMP`。两层虚拟化须**两层都看**。
-**可跑的检查（命令行）**：B11 形态用 `dexdump -d <apk> | grep <解释器方法名>` 看汇聚调用；B13 用 `readelf -h <so>` 看节头数是否为 0；两个都中才提示双重 VMP。
+**可跑的检查（命令行）**：B11 形态用 `dexdump -d <apk> | grep <解释器方法名>` 看汇聚调用；B13 用 `llvm-readelf -h <so>` 看节头数是否为 0；两个都中才提示双重 VMP。
 
 ### 字符串加密 **[知识框架]**
 JADX 里关键 URL/密钥/类名/错误信息可能搜不到。处理：从「静态搜索」转「使用点 → 运行期解密 → 明文」。与「变种样本 · 字符串混淆」的区别：该节是等长替换（串还在只是变形），字符串**加密**静态不可读须找解密点。属认知边界（动态还原）。
-**可跑的检查（命令行）**：`strings <dex>` 找不到已知业务串 + `xxd` 看 data 段高熵，即提示「串可能被加密」；定性解密点须动态（Frida hook String.valueOf 等）。
+**可跑的检查（命令行）**：`llvm-strings <dex>` 找不到已知业务串 + `xxd` 看 data 段高熵，即提示「串可能被加密」；定性解密点须动态（Frida hook String.valueOf 等）。
 
 ### 完整性 / 签名保护 **[知识框架]**
 DEX/SO/资源防篡改 + 签名保护。改 APK 重打包运行异常，可能不是代码错而是校验被触发。属认知边界。
@@ -127,7 +95,7 @@ DEX/SO/资源防篡改 + 签名保护。改 APK 重打包运行异常，可能�
 
 ### 反调试 / 反注入 / 反 Hook **[知识框架]**
 防 Java/C 层调试、防注入、防 Hook。现象：附加调试器/动态 Hook → 崩溃退出。**作为独立模块分析，勿混入 DEX 恢复逻辑**。
-**可跑的检查（命令行）**：`strings <apk内文件> | grep -Ei "frida|substrate|ptrace|/proc/self/maps"` 扫痕迹（即 B10 的命令行版，见「框架类判据」节实跑）。
+**可跑的检查（命令行）**：`llvm-strings <apk内文件> | grep -Ei "frida|substrate|ptrace|/proc/self/maps"` 扫痕迹（即 B10 的命令行版，见「框架类判据」节实跑）。
 
 ### 样本识别检查表
 `classes.dex` 业务类大量消失、壳类极少；`assets/` 可能有独立加密载荷；`lib/` 可能有加固 SO；DEX 方法可能抽取；Native 可能承担恢复/VMP；关注动态加载、运行时恢复、完整性/环境检查、反调试。**反向提醒**：JADX 里「只有几个奇怪的类」不代表 App 真只有几个类，可能业务 DEX 被移出标准 DEX。
@@ -279,7 +247,7 @@ xxd -l 64 analysis_output/so_probe/lib/arm64-v8a/libcalc.so
 | `0x3C` | `e_shnum` | `00 00` | **0 —— 节头数量为 0** |
 
 `e_type=3`（共享对象）却 `e_shoff=0 / e_shnum=0`（完全没有 `.text/.rodata` 等标准节头），是**确定性信号**——正常 NDK `.so` 永远带完整节头，只有自实现 Linker 会自己按 Program Header 装载、不写标准节头。该信号**独立于任何 DEX 判据**，能抓到 UPX 类壳抓不到的自定义 Linker。
-> 等价工具：`readelf -h libcalc.so` 会直接显示 `Section header table` 数量为 0；`readelf` 与 `xxd` 结论一致。
+> 等价工具：`llvm-readelf -h libcalc.so` 会直接显示 `Section header table` 数量为 0；`llvm-readelf` 与 `xxd` 结论一致。
 **失效边界**：`B13` 只看「节头被剥离」这一结构异常。**SO VMP** 的解释器是 SO 里一个普通大函数、ELF 结构正常，静态不可定性（须动态 trace）；「不走汇聚调用」形态的自定义 VMP、精巧字符串加密同理——都属认知边界，绝不等于「未加固」。
 
 ### 框架类判据（反调试串 / SO 熵 / 汇聚调用）
@@ -503,7 +471,7 @@ cp -r samples/ pristine/
 4. **insns 区 = code_off + 16**：offset 算错会填错位置。
 5. **校验重算顺序**：先 `sha1(data[32:])` 再 `adler32(data[12:])`；反了 dex 报 Bad checksum。
 6. **aapt2 经管道会崩**：Git Bash 下 `aapt2 … | grep` 偶发 `VirtualAlloc failed`；先重定向到文件再读。
-7. **Windows 程序用盘符风格路径**：`aapt2`/`binwalk`/`readelf` 传 `X:/...`，`unzip`/`xxd`/`sha256sum` 这类 Git Bash 工具可用 `/d/...`。
+7. **Windows 程序用盘符风格路径**：`aapt2`/`binwalk`/`llvm-readelf` 传 `X:/...`，`unzip`/`xxd`/`sha256sum` 这类 Git Bash 工具可用 `/d/...`。
 8. **中文乱码**：`PYTHONIOENCODING=utf-8`（PowerShell `$env:PYTHONIOENCODING='utf-8'`）。
 9. **本机只有 `python` 无 `python3`**（见全局约定）。
 

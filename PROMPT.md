@@ -15,6 +15,42 @@
 > ⚠️ **Local command convention**: this machine **has `python`, no `python3`**.
 > All scripts and doc examples use `python xxx.py`. Shebangs use `#!/usr/bin/env python`.
 
+> ⚠️ **Local toolchain naming convention (LLVM-prefixed tools)**: on this machine the
+> binary utilities come from the Android NDK's LLVM toolchain, and **almost all of them are
+> `llvm-`-prefixed**. The bare GNU names **do not exist** — writing `readelf` / `objdump` /
+> `nm` / `strings` / `strip` / `size` / `addr2line` into a doc produces commands the reader
+> cannot run. Use the prefixed name, which is on `PATH` via the NDK:
+>
+> | GNU name (absent) | Use instead (on PATH) |
+> |---|---|
+> | `readelf` | `llvm-readelf` |
+> | `objdump` | `llvm-objdump` |
+> | `nm` | `llvm-nm` |
+> | `strings` | `llvm-strings` |
+> | `strip` | `llvm-strip` |
+> | `size` | `llvm-size` |
+> | `objcopy` | `llvm-objcopy` |
+> | `addr2line` | `llvm-addr2line` |
+> | `dwarfdump` | `llvm-dwarfdump` |
+>
+> The NDK ships ~30 such tools (`llvm-ar cfi-verify config cov dis dwp ifs lib link ml nm
+> objcopy objdump profdata rc readelf readobj size strings strip symbolizer ...`); the only
+> non-prefixed binaries are `clang*` / `ld*` / `lldb*` / `wasm-ld` and the target-triple
+> wrappers (`aarch64-linux-android21-clang` …). Sibling tools from Git Bash (`xxd`,
+> `sha256sum`, `cmp`, `grep`) keep their plain names — the prefix rule applies to the
+> LLVM/NDK binutils only.
+> Toolchain location (four-tier resolution applies; this is the autodetect tail):
+> `<SDK>/ndk/<version>/toolchains/llvm/prebuilt/<host>/bin` and
+> `<SDK>/../android-ndk-r27d/toolchains/llvm/prebuilt/<host>/bin`.
+
+> ⚠️ **Verify-before-write (hard rule)**: every command that goes into a document —
+> CLI route especially — must be **run once by the agent while writing the doc**, so its
+> existence and its real output are both confirmed. Do not write a command from memory or
+> from how it is usually named on Linux, and never let the user be the one to discover that
+> the command does not exist here. If a tool genuinely is missing, either use the working
+> equivalent above or record it in the doc's pitfalls chapter *as an environment fact* —
+> but the doc's copy-pasteable commands must all run as written.
+
 > ⚠️ **Documentation-writing conventions**
 > 1. **Script → CLI → GUI**: chapter order = theory → script run → CLI reproduction →
 >    GUI understanding. Give the correct answer via automation first, then explain why;

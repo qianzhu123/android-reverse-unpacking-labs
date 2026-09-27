@@ -8,7 +8,7 @@
 
 ---
 
-## 概述与三分钟跑一遍
+## 概述
 
 **项目定位**：本工程用自造的「类爱加密」样本，把 Android DEX 加固的**三代演化**（原理 → 结构特征 → 判定 → 脚本脱壳 → 验证）全链路搬到本地，做到**可编译、可量化、可复现**。
 
@@ -23,35 +23,6 @@
 1. **先确定性规则，再谈 LLM**：判定与脱壳都是手写结构分析，不依赖大模型。
 2. **基于 evidence**：所有判定落在**结构特征**（字节偏移、空方法率、熵、缺失类），绝不靠文件名/字符串。
 3. **配置外置**：工具链由 `build/locate.sh` 自动探测，脚本里不含写死绝对路径。
-
-### 三分钟跑一遍（脚本版 · 一代样本最小闭环）
-
-```bash
-cd ajiami
-
-# ① 一次判定全部三代（detect 支持多参数；三代各出一个结论，一次看清代际差异）
-python tools/detect.py samples/apks/app_packed_v1.apk samples/apks/app_packed_v2.apk samples/apks/app_packed_v3.apk
-#   => v1 结论：已加固：DEX 整体加密型（一代）
-#   => v2 结论：已加固：类抽取型（二代及以上）
-#   => v3 结论：已加固：类抽取型（二代及以上）
-#   三代判定差异的完整输出见「判定」节逐代展开
-
-# ② 脱壳：一代用 unpack_v1.py；--pristine 给黄金样本，解完立刻比对
-python tools/unpack_v1.py samples/apks/app_packed_v1.apk analysis_output/unpack_v1_dex.dex --pristine samples/dex/classes_orig.dex
-#   => [4] dex 魔数校验 b'dex\n037\x00'   [6] 与黄金 classes_orig.dex 对照: 完全一致 ✓
-
-# ③ 脱壳二/三代（类抽取型，同一脚本、不同黄金样本）
-python tools/unpack_v2.py samples/apks/app_packed_v3.apk analysis_output/unpack_v3_dex.dex --pristine samples/dex/classes_merged_orig.dex
-#   => [5] 还原后空方法数 = 0 / 44   [6] 与黄金 classes_merged_orig.dex 对照: 完全一致 ✓
-
-# ④ 验证：独立于脱壳脚本自检（sha256 / 锚点 / 字节差异三项）
-python tools/verify.py analysis_output/unpack_v1_dex.dex samples/dex/classes_orig.dex
-#   => [1] sha256 一致 ✓   [2] 锚点 11/11   [3] 无差异 ✓   => 还原成功
-python tools/verify.py analysis_output/unpack_v3_dex.dex samples/dex/classes_merged_orig.dex
-#   => [1] sha256 一致 ✓   [2] 锚点 11/11   [3] 无差异 ✓   => 还原成功
-```
-
-四步走通（三代判定 → 两类脱壳 → 双重验证），说明环境 OK 且**三代全链路都能跑**，不是只通一代。各步原理见「知识点」，逐代判定细节见「判定」，选型见「踩坑/速查」的决策流程。
 
 ### 文件与样本索引
 
@@ -169,7 +140,7 @@ DEX/SO/资源防篡改 + 签名保护。改 APK 重打包运行异常，可能�
 
 ### 反调试 / 反注入 / 反 Hook **[知识框架]**
 防 Java/C 层调试、防注入、防 Hook。现象：附加调试器/动态 Hook → 崩溃退出。**作为独立模块分析，勿混入 DEX 恢复逻辑**。识别：B10 扫反分析痕迹，但真正确认需动态分析。
-**可跑的检查**：静态痕迹扫描可直接跑——`python tools/detect.py <apk>` 输出的 B10 段（`threat_string_hits`）对 frida/ptrace 等字符串做命中提示；命令行路线用 `strings <dex> | grep -Ei "frida|ptrace"` 同效（见 CLI「框架类判据」节）。命中只说明「可能有」，定性须动态。
+**可跑的检查**：静态痕迹扫描可直接跑——`python tools/detect.py <apk>` 输出的 B10 段（`threat_string_hits`）对 frida/ptrace 等字符串做命中提示；命令行路线用 `llvm-strings <dex> | grep -Ei "frida|ptrace"` 同效（见 CLI「框架类判据」节）。命中只说明「可能有」，定性须动态。
 
 ### 样本识别检查表
 `classes.dex` 业务类大量消失、壳类极少；`assets/` 可能有独立加密载荷；`lib/` 可能有加固 SO；DEX 方法可能抽取；Native 可能承担恢复/VMP；关注动态加载、运行时恢复、完整性/环境检查、反调试。

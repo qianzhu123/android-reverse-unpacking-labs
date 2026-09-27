@@ -2,15 +2,15 @@
 
 > 本文件与 `CLI.md`、`GUI.md` **结构完全平行**（同一套章节骨架一一对应），只讲「脚本怎么做」。
 > 所有判定与脱壳都靠 `tools/` 下的 Python 脚本（纯标准库，无外部依赖），不依赖任何大模型。
-> 想亲手用 xxd / readelf / sha256sum 逐字节复现每一步，去读 `CLI.md`；
+> 想亲手用 xxd / llvm-readelf / sha256sum 逐字节复现每一步，去读 `CLI.md`；
 > 想用 010 Editor / IDA / binwalk 看懂每一步，去读 `GUI.md`。
 >
 > **路线分工**：判定靠 SCRIPT/CLI（可量化、可写进判据），看懂靠 GUI（IDA 出调用链、binwalk 出熵曲线）。
-> 阅读顺序建议：先跑「三分钟跑一遍」（知道「能解开」），再看「判定」「脱壳」的原理展开。
+> 阅读顺序建议：先跑「判定」拿到结论（知道「是什么壳」），再看「脱壳」的手法展开。
 
 ---
 
-## 概述与三分钟跑一遍
+## 概述
 
 ### 一句话定位
 
@@ -34,42 +34,6 @@
 > **重要前提**：官方 UPX 4.2.4 **不能直接打包 Android 的 `ET_DYN` `.so`**（见「踩坑」）。
 > 本工程标准/变种样本以 `linux/arm ET_EXEC` 形式打包——**脱壳机制完全相同**（同样的 Stub、
 > 解压缓冲、OEP 概念），仅 `e_type` 字段不同。原始 `.so` 仍是货真价实的 ARM32 Android `ET_DYN`。
-
-### 三分钟跑一遍（脚本版 · 全部样本形态）
-
-```bash
-cd 360jiagu
-
-# ① 判定 4 个样本（不看文件名，只看结构特征；一次覆盖 orig/标准/变种/B13 四种形态）
-python tools/detect_360.py samples/so/libtarget_orig.so            # => 综合得分 0  · 未见已知加固特征（≠未加壳）
-python tools/detect_360.py samples/so/libtarget_360.so             # => 综合得分 16 · 标准 360（UPX! 保留，可自动解包）
-python tools/detect_360.py samples/so/libtarget_360_variant.so     # => 综合得分 16 · ★ 变种 360（UPX! 被改写，结构仍在）
-python tools/detect_360.py samples/so/libtarget_stripped.so        # => 综合得分 2  · B13：疑似 SO 加壳 / 自实现 Linker（节头被剥离）
-
-# ② 标准 360：直接官方解包（-t 先验证能解，-d 再解出；out.so 应为 43888 字节）
-./upx.exe -t samples/so/libtarget_360.so && ./upx.exe -d samples/so/libtarget_360.so -o out.so
-#   => Unpacked 1 file.   out.so = 43888 字节
-
-# ③ 变种 360：先实证确认真魔数，再修复解包
-python tools/detect_360.py samples/so/libtarget_360_variant.so --verify
-#   => b'JG!!' x4 -> upx -t OK   <= 这就是被篡改的真魔数（其余候选是巧合项）
-python tools/solve_360.py samples/so/libtarget_360_variant.so unpacked.so --orig samples/so/libtarget_orig.so
-#                └ 输入变种样本         └ 输出   └ 黄金样本：解完立刻比对，应报「除 e_type 外差异 0 字节」
-
-# ④ 解法 B 演练（无真机也能跑通内存 dump + ELF Fix）
-python tools/simulate_dump.py samples/so/libtarget_orig.so analysis_output/sim_dump.bin
-python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_fixed.so --arch arm
-#   => wrote analysis_output/dump_fixed.so: base=0x0 size=53408 arch=arm entry=0x0
-
-# ⑤ 回归 + 练完还原，下次重练
-python tools/check_so_samples.py                        # => 0 项失败（B13 正/负向 + 既有判定防回归）
-python tools/reset_lab.py restore                       # => 还原样本 + 删练习产物 + 清空 analysis_output/
-```
-
-**五步分别干什么**：`detect_360.py` 只做**结构体检**（不修改文件），看 F1–F8 哪几条被点亮；
-`--verify` 会把每个"疑似被篡改的 4 字节 token"打补丁后跑一次 `upx -t` **实证**（静态候选必有巧合项）；
-`solve_360.py` 是解法 A 的完整自动化：定位 token → 全部还原为 `UPX!` → `upx -d` → 锚点校验 → 与黄金样本逐字节比对；
-`simulate_dump`/`dump_fix` 是解法 B 的本地演练；`check_so_samples.py` 是双向回归断言（负样本工程的"心跳"）。
 
 ---
 
