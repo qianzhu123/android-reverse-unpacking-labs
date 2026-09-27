@@ -3,20 +3,30 @@
 """
 gui.py — unpacker 的图形界面（tkinter + tkinterdnd2 真拖放）。
 
-窗口布局：
-  ┌────────────────────────────────────────────┐
-  │  拖入 APK / dex / so（或点击选择文件）      │  ← 拖放区，全窗口接受文件
-  │  [判定]  [解固]  [选黄金样本…]  [回归矩阵]   │  ← 按钮区
-  │  ┌──────────────────────────────────────┐  │
-  │  │ 输出区（[!]/[*]/[+] 原样显示）        │  │  ← 结果文本，可复制
-  │  └──────────────────────────────────────┘  │
-  └────────────────────────────────────────────┘
+窗口布局（分三组，LabelFrame 隔开，避免按钮平铺显得杂乱）：
+  ┌─ ① 选择目标 ────────────────────────────────────────┐
+  │  ⬇  把 APK / dex / so 拖到这里        [浏览文件…]    │  ← 拖放区（点击也可选）
+  │  目标：<路径>                                        │
+  └─────────────────────────────────────────────────────┘
+  ┌─ ② 执行 ────────────────────────────────────────────┐
+  │  [判定（只读体检）]  [解固（判定→路由→验证）]          │
+  │  黄金样本(可选)：<名>   [选择…] [清除]                │
+  │  产物位置(可选)：<路径> [选择…] [清除]                │
+  │  ─────────────────────────────────                  │
+  │  [回归矩阵（全部样本双向断言）]                       │
+  └─────────────────────────────────────────────────────┘
+  ┌─ 输出 ──────────────────────────────────────[清空][复制]┐
+  │  [!]/[*]/[+] 原样显示，可复制                          │
+  └───────────────────────────────────────────────────────┘
+  状态栏
+
+支持两种选文件方式：**拖放**（全窗口）与**资源管理器选择**（拖放区按钮 / 点击拖放区）。
 
 行为约定（与 CLI 完全一致，只是把 stdout 引到文本区）：
   · 判定 = analyzer.analyze（只读体检），结果带认知边界提示
   · 解固 = unpack.main_with_repo（判定→路由→两级验证）；
     黄金样本可选，不选则明确提示 anchor-only 级验证
-    产物位置可选（「选产物位置…」），不选则默认与拖入文件同目录（<样本名>_unpacked.*）
+    产物位置可选，不选则默认与拖入文件同目录（<样本名>_unpacked.*）
   · 回归矩阵 = regression.main_with_repo（19 样本双向断言）
 
 长任务在后台线程跑，界面不冻结；运行中按钮禁用 + 状态栏提示。
@@ -37,6 +47,13 @@ except ImportError:  # 无 tkinterdnd2 时退化为纯点击选择（exe 内置�
     _HAS_DND = False
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# 统一的取色（ttk 默认灰调下压一点对比，避免整屏都是系统灰）
+C_MUTED = '#6c757d'      # 次要说明文字
+C_PATH = '#0a58ca'       # 文件/目录路径
+C_OK = '#1e8449'
+C_ERR = '#c0392b'
+PAD = 10
 
 
 # ------------------------------------------------ stdout 重定向到队列（线程安全）
@@ -116,60 +133,105 @@ class Gui:
 
     # ---------------------------------------------------------------- UI
     def _build(self):
-        pad = {'padx': 8, 'pady': 4}
+        # ============ ① 选择目标 ============
+        g1 = ttk.LabelFrame(self.root, text=' ① 选择目标 ')
+        g1.pack(fill='x', padx=PAD, pady=(PAD, PAD // 2))
 
-        top = ttk.Frame(self.root)
-        top.pack(fill='x', **pad)
+        drop_box = ttk.Frame(g1)
+        drop_box.pack(fill='x', padx=8, pady=8)
+        # 先 pack 按钮（side='right'）——保证它永远有位置，不被会 expand 的拖放区挤掉
+        ttk.Button(drop_box, text='浏览文件…', width=12,
+                   command=self._pick_file).pack(side='right', padx=(8, 0))
         self.drop_lbl = tk.Label(
-            top, text='⬇ 把 APK / dex / so 拖到这里（也支持全窗口拖放）',
-            relief='groove', padx=16, pady=18, bg='#f0f4f8')
-        self.drop_lbl.pack(fill='x', pady=(0, 6))
+            drop_box,
+            text='⬇  拖放 APK / dex / so 到这里（点击也可选择）',
+            relief='groove', bd=1, padx=12, pady=12,
+            bg='#eef4fa', fg='#37506b', justify='center')
+        self.drop_lbl.pack(side='left', fill='x', expand=True)
         self.drop_lbl.bind('<Button-1>', lambda e: self._pick_file())
 
-        row = ttk.Frame(top)
-        row.pack(fill='x', pady=2)
-        self.file_var = tk.StringVar(value='（未选择文件）')
-        ttk.Label(row, text='目标:').pack(side='left')
-        ttk.Label(row, textvariable=self.file_var, foreground='#0a58ca').pack(side='left')
+        row = ttk.Frame(g1)
+        row.pack(fill='x', padx=8, pady=(0, 8))
+        ttk.Label(row, text='目标：', foreground=C_MUTED).pack(side='left')
+        self.file_var = tk.StringVar(value='（未选择）')
+        # 路径可能很长：用只读 Entry 显示，超长时自动横向滚动，不会把窗口撑变形
+        self.file_entry = ttk.Entry(row, textvariable=self.file_var,
+                                    state='readonly', foreground=C_PATH)
+        self.file_entry.pack(side='left', fill='x', expand=True, padx=(4, 0))
 
-        btns = ttk.Frame(self.root)
-        btns.pack(fill='x', **pad)
-        self.btn_analyze = ttk.Button(btns, text='① 判定（只读体检）', command=self._do_analyze)
-        self.btn_analyze.pack(side='left', padx=4)
-        self.btn_unpack = ttk.Button(btns, text='② 解固（判定→路由→验证）', command=self._do_unpack)
-        self.btn_unpack.pack(side='left', padx=4)
-        ttk.Button(btns, text='选黄金样本（可选）', command=self._pick_pristine).pack(side='left', padx=4)
-        self.pristine_var = tk.StringVar(value='')
-        ttk.Label(btns, textvariable=self.pristine_var, foreground='#6c757d').pack(side='left', padx=2)
-        self.btn_reg = ttk.Button(btns, text='③ 回归矩阵', command=self._do_regression)
-        self.btn_reg.pack(side='right', padx=4)
+        # ============ ② 执行 ============
+        g2 = ttk.LabelFrame(self.root, text=' ② 执行 ')
+        g2.pack(fill='x', padx=PAD, pady=PAD // 2)
 
-        out_row = ttk.Frame(self.root)
-        out_row.pack(fill='x', **pad)
-        ttk.Button(out_row, text='选产物位置', command=self._pick_outdir).pack(side='left', padx=4)
-        ttk.Button(out_row, text='清除', command=self._clear_outdir).pack(side='left', padx=2)
-        self.outdir_var = tk.StringVar(value='产物位置：与拖入文件同目录（<样本名>_unpacked.so/.dex）')
-        ttk.Label(out_row, textvariable=self.outdir_var, foreground='#6c757d').pack(
-            side='left', padx=6, fill='x', expand=True)
+        act = ttk.Frame(g2)
+        act.pack(fill='x', padx=8, pady=(8, 4))
+        self.btn_analyze = ttk.Button(act, text='判定（只读体检）', command=self._do_analyze)
+        self.btn_analyze.pack(side='left')
+        self.btn_unpack = ttk.Button(act, text='解固（判定 → 路由 → 验证）', command=self._do_unpack)
+        self.btn_unpack.pack(side='left', padx=8)
 
-        body = ttk.Frame(self.root)
-        body.pack(fill='both', expand=True, **pad)
-        head = ttk.Frame(body)
-        head.pack(fill='x')
-        ttk.Label(head, text='输出：').pack(side='left')
-        ttk.Button(head, text='清空输出', command=self._clear_output).pack(side='left', padx=4)
-        self.out = tk.Text(body, wrap='char', font=('Consolas', 9), state='disabled')
-        self.out.pack(fill='both', expand=True)
-        sb = ttk.Scrollbar(body, command=self.out.yview)
+        # 黄金样本行
+        pr = ttk.Frame(g2)
+        pr.pack(fill='x', padx=8, pady=3)
+        ttk.Label(pr, text='黄金样本（可选，逐字节验证用）：',
+                  foreground=C_MUTED, width=26, anchor='w').pack(side='left')
+        # 按钮先 pack（右侧固定），中间留只读 Entry 显示路径
+        ttk.Button(pr, text='清除', width=6,
+                   command=self._clear_pristine).pack(side='right', padx=(2, 0))
+        ttk.Button(pr, text='选择…', width=7,
+                   command=self._pick_pristine).pack(side='right', padx=(4, 2))
+        self.pristine_var = tk.StringVar(value='未选择')
+        ttk.Entry(pr, textvariable=self.pristine_var, state='readonly',
+                  foreground=C_PATH).pack(side='left', fill='x', expand=True, padx=(4, 0))
+
+        # 产物位置行
+        od = ttk.Frame(g2)
+        od.pack(fill='x', padx=8, pady=3)
+        ttk.Label(od, text='产物位置（可选）：',
+                  foreground=C_MUTED, width=26, anchor='w').pack(side='left')
+        ttk.Button(od, text='清除', width=6,
+                   command=self._clear_outdir).pack(side='right', padx=(2, 0))
+        ttk.Button(od, text='选择…', width=7,
+                   command=self._pick_outdir).pack(side='right', padx=(4, 2))
+        self.outdir_var = tk.StringVar(value='默认与目标文件同目录')
+        ttk.Entry(od, textvariable=self.outdir_var, state='readonly',
+                  foreground=C_PATH).pack(side='left', fill='x', expand=True, padx=(4, 0))
+
+        ttk.Separator(g2, orient='horizontal').pack(fill='x', padx=8, pady=8)
+        rg = ttk.Frame(g2)
+        rg.pack(fill='x', padx=8, pady=(0, 8))
+        self.btn_reg = ttk.Button(rg, text='回归矩阵（全部样本双向断言）',
+                                  command=self._do_regression)
+        self.btn_reg.pack(side='left')
+        ttk.Label(rg, text='不依赖目标文件，随时可跑；改过 lab 检测器后必须跑',
+                  foreground=C_MUTED).pack(side='left', padx=8)
+
+        # ============ 输出 ============
+        g3 = ttk.LabelFrame(self.root, text=' 输出 ')
+        g3.pack(fill='both', expand=True, padx=PAD, pady=(PAD // 2, PAD))
+
+        head = ttk.Frame(g3)
+        head.pack(fill='x', padx=8, pady=(8, 2))
+        ttk.Button(head, text='复制全部', command=self._copy_output).pack(side='left')
+        ttk.Button(head, text='清空', command=self._clear_output).pack(side='left', padx=6)
+        ttk.Label(head, text='（清空不打断正在运行的任务）',
+                  foreground=C_MUTED).pack(side='left', padx=4)
+
+        wrap = ttk.Frame(g3)
+        wrap.pack(fill='both', expand=True, padx=8, pady=(2, 8))
+        self.out = tk.Text(wrap, wrap='char', font=('Consolas', 9),
+                           state='disabled', bd=1, relief='solid')
+        self.out.pack(side='left', fill='both', expand=True)
+        sb = ttk.Scrollbar(wrap, command=self.out.yview)
         sb.pack(side='right', fill='y')
         self.out.configure(yscrollcommand=sb.set)
         # [!]=失败红 [*]=步骤灰 [+]=成功绿，与 CLI 语义一致
-        for tag, color in (('[!]', '#c0392b'), ('[*]', '#6c757d'), ('[+]', '#1e8449')):
+        for tag, color in (('[!]', C_ERR), ('[*]', C_MUTED), ('[+]', C_OK)):
             self.out.tag_configure(tag, foreground=color)
 
         self.status = tk.StringVar(value='就绪')
-        ttk.Label(self.root, textvariable=self.status, relief='sunken', anchor='w').pack(
-            fill='x', side='bottom')
+        ttk.Label(self.root, textvariable=self.status, relief='sunken',
+                  anchor='w', padding=(8, 3)).pack(fill='x', side='bottom')
 
         self.file_path = None
 
@@ -190,6 +252,16 @@ class Gui:
         self.out.configure(state='normal')
         self.out.delete('1.0', 'end')
         self.out.configure(state='disabled')
+
+    def _copy_output(self):
+        """把输出区全部文本复制到剪贴板（便于贴到 issue / 报告里）。"""
+        text = self.out.get('1.0', 'end').rstrip()
+        if not text:
+            self.status.set('输出为空，无需复制')
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.status.set('已复制输出到剪贴板（%d 字符）' % len(text))
 
     def _drain_queue(self):
         try:
@@ -219,35 +291,55 @@ class Gui:
             break
 
     def _pick_file(self):
+        """打开 Windows 资源管理器选择文件（与拖放等价）。"""
         p = filedialog.askopenfilename(
-            title='选择 APK / dex / so 文件',
-            filetypes=[('支持格式', '*.apk *.dex *.so *.xapk'), ('所有文件', '*.*')])
+            parent=self.root,
+            title='选择要判定 / 解固的文件',
+            filetypes=[('支持的格式', '*.apk *.so *.dex *.xapk'),
+                       ('APK 安装包', '*.apk *.xapk'),
+                       ('原生库 .so', '*.so'),
+                       ('DEX 字节码', '*.dex'),
+                       ('所有文件', '*.*')])
         if p:
             self._accept_path(p)
+        else:
+            self.status.set('已取消文件选择')
 
     def _pick_pristine(self):
         p = filedialog.askopenfilename(
-            title='选择黄金对照样本（用于 byte-exact 验证，可选）',
-            filetypes=[('支持格式', '*.apk *.dex *.so'), ('所有文件', '*.*')])
+            parent=self.root,
+            title='选择黄金对照样本（用于逐字节验证，可选）',
+            filetypes=[('支持的格式', '*.apk *.so *.dex'), ('所有文件', '*.*')])
         if p:
-            self.pristine_var.set(os.path.basename(p))
             self._pristine = os.path.abspath(p)
+            self.pristine_var.set(self._pristine)
             self._say('[*] 黄金样本: %s' % self._pristine)
-        else:
-            self._pristine = None
+            self.status.set('已选黄金样本')
+        # 取消对话框时保持当前设置不变（不误清）
+
+    def _clear_pristine(self):
+        if not getattr(self, '_pristine', None):
+            return
+        self._pristine = None
+        self.pristine_var.set('未选择')
+        self._say('[*] 黄金样本已清除——解固将只做 anchor-only 级验证。')
 
     def _pick_outdir(self):
-        p = filedialog.askdirectory(title='选择产物目录（取消=保持当前设置）')
+        p = filedialog.askdirectory(parent=self.root,
+                                    title='选择产物目录（取消=保持当前设置）')
         if p:
             self._outdir = os.path.abspath(p)
-            self.outdir_var.set('产物位置：%s' % self._outdir)
+            self.outdir_var.set(self._outdir)
             self._say('[*] 产物位置已指定: %s' % self._outdir)
+            self.status.set('已指定产物位置')
         # 取消对话框时保持当前设置不变（不误清）
 
     def _clear_outdir(self):
+        if not getattr(self, '_outdir', None):
+            return
         self._outdir = None
-        self.outdir_var.set('产物位置：与拖入文件同目录（<样本名>_unpacked.so/.dex）')
-        self._say('[*] 产物位置已恢复默认：与拖入文件同目录')
+        self.outdir_var.set('默认与目标文件同目录')
+        self._say('[*] 产物位置已恢复默认：与目标文件同目录')
 
     # -------------------------------------------------------- 任务执行
     def _run_task(self, name, fn):
@@ -334,11 +426,13 @@ class Gui:
 
     def run(self):
         self._say('[*] unpacker GUI 就绪。仓库根: %s' % self.repo)
-        self._say('[*] 用法：拖入文件 → ① 判定 →（可选：黄金样本 / 产物位置）→ ② 解固；产物默认在拖入文件同目录。')
-        self._say('[*] 测试本仓库的加固样本：把 360jiagu/、upx_practice/ 下的 libtarget_*.so 或 '
-                  'ajiami/samples/apks/ 下的 app_packed_*.apk 拖进来即可——'
-                  '它们正是 ③ 回归矩阵 所覆盖的那批样本。')
-        self._say('[*] 提示：输出太多可随时点「清空输出」；不影响正在运行的任务。')
+        self._say('[*] 用法：把文件拖入上方区域，或点「浏览文件…」从资源管理器选择；'
+                  '然后点「判定」，需要时再点「解固」。')
+        self._say('[*] 测试本仓库的加固样本：360jiagu/samples/so/ 与 upx_practice/samples/so/ 下的 '
+                  'libtarget_*.so，或 ajiami/samples/apks/ 下的 app_packed_*.apk——'
+                  '它们正是「回归矩阵」所覆盖的那批样本。')
+        self._say('[*] 产物默认与目标文件同目录；输出太多可点「清空」，'
+                  '要留档可点「复制全部」。')
         self.root.mainloop()
 
 

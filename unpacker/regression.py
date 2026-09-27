@@ -42,15 +42,15 @@ from analyzer import analyze, sniff_kind  # noqa: E402
 #   期望前缀: 若非 None，统一结论必须以它开头（更严）
 EXPECTED = [
     # ---- 360jiagu SO 样本（期望同 360jiagu/tools/check_so_samples.py）----
-    ('360jiagu/libtarget_orig.so',        'clean',   '未见已知加固特征', '原始 SO 黄金基线（负向）'),
-    ('360jiagu/libtarget_360.so',         'packed', '标准 360 加固',    '标准 360（UPX! 保留）'),
-    ('360jiagu/libtarget_360_variant.so', 'packed', '★ 变种 360 加固',  '变种 360（UPX!→JG!!）'),
-    ('360jiagu/libtarget_stripped.so',    'suspect', '疑似 SO 加壳',    'B13 正样本：节头剥离'),
+    ('360jiagu/samples/so/libtarget_orig.so',        'clean',   '未见已知加固特征', '原始 SO 黄金基线（负向）'),
+    ('360jiagu/samples/so/libtarget_360.so',         'packed', '标准 360 加固',    '标准 360（UPX! 保留）'),
+    ('360jiagu/samples/so/libtarget_360_variant.so', 'packed', '★ 变种 360 加固',  '变种 360（UPX!→JG!!）'),
+    ('360jiagu/samples/so/libtarget_stripped.so',    'suspect', '疑似 SO 加壳',    'B13 正样本：节头剥离'),
     # ---- upx_practice SO 样本（期望同 upx_practice/tools/check_so_samples.py）----
-    ('upx_practice/libtarget_orig.so',        'clean',   '未见已知加固特征', '原始 SO 黄金基线（负向）'),
-    ('upx_practice/libtarget_upx.so',         'packed', '标准 UPX 壳',      '标准 UPX'),
-    ('upx_practice/libtarget_upx_variant.so',  'packed', '★ 变种 UPX',      '变种 UPX（魔数被抹）'),
-    ('upx_practice/libtarget_stripped.so',     'suspect', '疑似 SO 加壳',     'B13 正样本：节头剥离'),
+    ('upx_practice/samples/so/libtarget_orig.so',        'clean',   '未见已知加固特征', '原始 SO 黄金基线（负向）'),
+    ('upx_practice/samples/so/libtarget_upx.so',         'packed', '标准 UPX 壳',      '标准 UPX'),
+    ('upx_practice/samples/so/libtarget_upx_variant.so',  'packed', '★ 变种 UPX',      '变种 UPX（魔数被抹）'),
+    ('upx_practice/samples/so/libtarget_stripped.so',     'suspect', '疑似 SO 加壳',     'B13 正样本：节头剥离'),
     # ---- ajiami APK 样本（期望同 ajiami/tools/check_negatives.py）----
     ('ajiami/samples/apks/app_packed_v1.apk',        'packed', '已加固：DEX 整体加密型（一代）', '一代整体加密'),
     ('ajiami/samples/apks/app_packed_v2.apk',        'packed', '已加固：类抽取型（二代及以上）', '二代类抽取'),
@@ -70,10 +70,10 @@ EXPECTED = [
 # SO 检测器交叉验证：360 样本喂 UPX 检测器、UPX 样本喂 360 检测器，
 # is_packed 方向必须一致（壳种命名允许不同——360 检测器多 360 归属标记）。
 CROSS_CHECKS = [
-    ('360jiagu/libtarget_360.so',         'upx'),
-    ('360jiagu/libtarget_360_variant.so', 'upx'),
-    ('upx_practice/libtarget_upx.so',      '360'),
-    ('upx_practice/libtarget_upx_variant.so', '360'),
+    ('360jiagu/samples/so/libtarget_360.so',         'upx'),
+    ('360jiagu/samples/so/libtarget_360_variant.so', 'upx'),
+    ('upx_practice/samples/so/libtarget_upx.so',      '360'),
+    ('upx_practice/samples/so/libtarget_upx_variant.so', '360'),
 ]
 
 

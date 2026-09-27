@@ -9,8 +9,8 @@
 **① 源码**（开发 / 随仓库使用）：
 
 ```bash
-python unpacker/main.py analyze 360jiagu/libtarget_360_variant.so
-python unpacker/main.py unpack  360jiagu/libtarget_360_variant.so --pristine 360jiagu/libtarget_orig.so
+python unpacker/main.py analyze 360jiagu/samples/so/libtarget_360_variant.so
+python unpacker/main.py unpack  360jiagu/samples/so/libtarget_360_variant.so --pristine 360jiagu/samples/so/libtarget_orig.so
 python unpacker/main.py regression
 # 各子模块也可直接跑（与之前完全兼容）：
 python unpacker/analyzer.py ...   python unpacker/unpack.py ...   python unpacker/regression.py
@@ -25,18 +25,17 @@ python unpacker/make_icon.py        # 可选：重新生成图标（改完图标
 
 - **`unpacker.exe` 双击/无参数启动 → 直接开图形界面，全程无黑色控制台窗口**（`--noconsole` 打包；
   连"每步操作闪一下黑框"也根治了——lab 脚本的 subprocess 调用被 GUI 统一加了
-  `CREATE_NO_WINDOW`，不改 lab 代码）：
-  - 顶部拖放区（全窗口接受拖放）：把 APK / dex / so 拖进去
-  - 按钮：**① 判定（只读体检）**、**② 解固（判定→路由→验证）**、
-    **选黄金样本（可选）**、**选产物位置**（选中/清除都即时反映在旁边标签上）、
-    **③ 回归矩阵**、**清空输出**
-  - **产物默认与拖入文件同路径**：`D:\samples\xxx.so` → `D:\samples\xxx_unpacked.so`
+  `CREATE_NO_WINDOW`，不改 lab 代码）。界面分三组，避免按钮平铺：
+  - **① 选择目标**：拖放区（全窗口接受拖放）+ **「浏览文件…」按钮**（打开资源管理器选择，与拖放等价）
+  - **② 执行**：**判定（只读体检）**、**解固（判定→路由→验证）**；
+    行内可选配 **黄金样本**（逐字节验证）与 **产物位置**，各自带「选择…」「清除」；
+    下方独立 **回归矩阵（全部样本双向断言）**
+  - **输出**：`[!]/[*]/[+]` 三色显示，「复制全部」（一键进剪贴板，便于留档）、「清空」（不影响运行中的任务）
+  - **产物默认与目标文件同路径**：`D:\samples\xxx.so` → `D:\samples\xxx_unpacked.so`
     （APK 出 `_unpacked.dex`）；产物已存在时自动加 `_1/_2` 编号，**不静默覆盖**
-  - 输出区实时显示 `[!]/[*]/[+]`（失败红 / 步骤灰 / 成功绿），与 CLI 输出一致；「清空输出」只清历史文本，不打断正在运行的任务
   - 长任务后台线程跑，界面不冻结；无控制台场景下 CLI 型错误改走弹窗
 - 同一 exe 也可在 cmd/PowerShell 里当 CLI 用：`unpacker.exe analyze|unpack|regression ...`
   （终端本来就有控制台，不存在黑框问题；把文件拖到 exe 图标上则直接判定并回车退出）
-- **CLI 子命令不变**：`unpacker.exe analyze|unpack|regression ...`（把文件拖到 exe 图标上则直接判定并回车退出）
 
 exe 的仓库定位（解固路由依赖三个 lab 的模块）：**exe 所在目录向上找** >
 `ANDROID_REVERSE_LABS` 环境变量 > `--repo <仓库根>` > exe 内置兜底副本（打包时把三个
@@ -55,11 +54,11 @@ exe 单独分发时产物默认写在**被解固文件同目录**（`<样本名>
 
 ```bash
 # ① 判定：拖入任意 APK / dex / so，只读体检，不修改文件
-python unpacker/analyzer.py 360jiagu/libtarget_360_variant.so
+python unpacker/analyzer.py 360jiagu/samples/so/libtarget_360_variant.so
 #   => 类型 elf | [360 检测器] 得分=16 | [UPX 检测器] 得分=16 | 统一结论: ★ 变种 360 加固…
 
 # ② 解固：判定 → 按壳种路由 → 两级验证（byte-exact / anchor-only）
-python unpacker/unpack.py 360jiagu/libtarget_360_variant.so --pristine 360jiagu/libtarget_orig.so
+python unpacker/unpack.py 360jiagu/samples/so/libtarget_360_variant.so --pristine 360jiagu/samples/so/libtarget_orig.so
 #   => 魔数还原(JG!!→UPX! ×4) → upx -d → 8 锚点找回 → 除 e_type 外 0 字节差异 => 解固成功
 
 # ③ 回归：全仓库混淆矩阵（正向防漏报 / 负向防误报 / 检测器交叉防分歧）
