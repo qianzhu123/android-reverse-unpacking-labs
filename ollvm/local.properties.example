@@ -1,0 +1,3 @@
+# Copy to local.properties and adjust for another machine.
+sdk.dir=D:\\tools\\Security\\Reverse\\Android\\dev\\AndroidSDK
+ndk.dir=D:\\tools\\Security\\Reverse\\Android\\dev\\android-ndk-r27d

@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+*.iml
+.idea/
+captures/
+analysis/out/
+analysis/out-*/
+tools/*.zip
+tools/gradle-8.13/

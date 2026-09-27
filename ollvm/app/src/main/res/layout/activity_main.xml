@@ -1,0 +1,9 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="24dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="OLLVM / 字符串加密学习靶场" android:textSize="22sp" android:textStyle="bold"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="对比 Java 明文、Java XOR、JNI 解密和控制流样例；使用 logcat、jadx、Ghidra、Frida、LLDB 分析。"/>
+    <Button android:id="@+id/plainButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="1. Java 明文字符串"/>
+    <Button android:id="@+id/xorButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="2. Java XOR 字符串"/>
+    <Button android:id="@+id/nativeButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="3. JNI 加密字符串"/>
+    <Button android:id="@+id/opaqueButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="4. JNI 控制流样例"/>
+    <TextView android:id="@+id/output" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:textIsSelectable="true" android:textSize="16sp"/>
+</LinearLayout>
