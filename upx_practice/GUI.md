@@ -191,7 +191,7 @@ binwalk：熵曲线（判定 F2 可视化）
   binwalk -E samples/so/libtarget_stripped.so     => 曲线正常（≈4.5）但节头被剥——熵曲线抓不到 B13
   （-p 存 PNG 本机失败：Kaleido 缺 mf.dll；用 -E 交互图或截图）
 
-复检
-  python tools/check_so_samples.py     => 0 项失败
-  python tools/reset_lab.py status
+复检（实验台回归与复位是 SCRIPT.md 路线的职责，此处只给入口，命令见 SCRIPT.md「反复练习」）
+  python tools/check_so_samples.py     => 0 项失败   ← 命令本体在 SCRIPT.md，GUI 路线不重跑
+  python tools/reset_lab.py status                      ← 同上
 ```

@@ -32,10 +32,12 @@
 | F3 大解压缓冲 | `0x1000→0x13000` | `llvm-readelf -l` 看 PT_LOAD 的 FileSiz/MemSiz 列 |
 | F4 入口在 stub | `e_entry=0x1358C` | `llvm-readelf -h` 的 Entry point + `llvm-readelf -l` 对照段范围 |
 | F6/F8 魔数 | `UPX!`×4 / `XXXX`×4 | `xxd` 在 4 处偏移直接读字节 |
-| B13 | ET_DYN + `e_shnum=0` | `llvm-readelf -h` 两行联读 |
+| B13 | ET_DYN + `e_shnum=0` | `llvm-readelf -h` 两行联读，这里的 + 指的是且 |
 | 验证 | 除 e_type 外 0 差异 | `sha256sum` + `cmp -l` |
 
 ---
+
+e_ 和 ET_ 都来自 ELF 规范的 C 结构体命名——e_ 是字段名，ET_ 是该字段取值的枚举名
 
 ## 判定
 
@@ -71,7 +73,44 @@ llvm-readelf -S samples/so/libtarget_upx.so
 
 **逐行判读**：`llvm-readelf -h` 一次回答「是不是 DYN / 入口在哪 / 有没有节头」三件事；`llvm-readelf -l` 的 MemSiz 列远大于 FileSiz 即解压缓冲。注意 B13 与「UPX 加壳」的区分点：**B13 样本 e_type 仍是 ET_DYN**，加壳样本被 pack.sh 临时改成了 ET_EXEC——所以"无节头"要联读 e_type 才能分类。
 
+llvm-readelf -l会出现多个LOAD，取异常的
+
 普通程序里 memsz > filesz 是常态——多出来的就是 .bss（未初始化的全局变量区），它不占文件体积。
+
+filesz指文件里占多少，memsz指内存里占多少，差值由loader补零
+
+F3需要filesz > 0  &&  memsz/filesz >= 4  &&  memsz >= 0x8000
+
+| 对比项         | Program Header 表（程序头）                          | Section Header 表（节头）                                    |
+| -------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
+| **谁来用**     | Loader / Linker（运行时）                            | 分析工具（静态分析时）                                       |
+| **作用**       | 描述**如何将文件装载到内存**，包括映射、权限、入口等 | 描述文件中的**各个逻辑区块**，如 `.text`、`.rodata`、`.dynsym` 等 |
+| **相关字段**   | `e_phoff` / `e_phnum` / `e_phentsize`                | `e_shoff` / `e_shnum` / `e_shentsize`                        |
+| **缺了会怎样** | ⚠️ 可能无法正常装载和运行                             | ⚠️ 通常仍可运行，但 IDA / Ghidra 等工具会失去节级导航和分析信息 |
+
+e_shoff     @0x20 (4字节)  节头表从文件哪个偏移开始
+e_shnum     @0x30 (2字节)  节头表有多少条（Number of section headers）
+e_shstrndx  @0x32 (2字节)  节名字符串表是第几条（节名靠它查）
+
+e_shoff 指路 → e_shnum 说有几条 → e_shstrndx 翻译节名。删节头就把这三个一起清零
+
+| ELF 类型                  | `e_shnum > 0`（节头完整）                | `e_shnum = 0`（节头被剥）               |
+| ------------------------- | ---------------------------------------- | --------------------------------------- |
+| **ET_DYN (3)**共享对象    | 正常 NDK `.so`（如 `libtarget_orig.so`） | 🔴 B13：疑似 SO 加壳 / 自实现 Linker     |
+| **ET_EXEC (2)**可执行文件 | 正常可执行文件                           | UPX 壳（`pack.sh` 打包时临时改的 EXEC） |
+
+| 对比项      | `libtarget_upx.so`      | `libtarget_stripped.so` |
+| ----------- | ----------------------- | ----------------------- |
+| **e_type**  | `2 ET_EXEC`             | `3 ET_DYN`              |
+| **e_shnum** | `0`                     | `0`                     |
+| **e_phnum** | `3`（业务结构被压缩掉） | `9`（完整保留）         |
+| **e_entry** | `0x1358C`（stub 段内）  | `0x0`（段首）           |
+| **熵**      | `7.309`（压缩）         | `4.469`（正常）         |
+| **UPX!**    | `4`                     | `0`                     |
+| **体积**    | `5348`（压扁）          | `70012`（不变）         |
+| **判定**    | **标准 UPX 壳**         | **B13**                 |
+
+两者都 e_shnum=0，但一个是 ET_EXEC + 高熵 + 体积缩水，一个是 ET_DYN + 正常熵 + 体积不变。只看 e_shnum 分不出它们，联读 e_type 才能
 
 ### xxd 定位魔数（F6 / F8，4 处偏移）
 
@@ -103,6 +142,15 @@ xxd -s 0x14a0 -l 68 samples/so/libtarget_upx_variant.so
 **逐行判读**：4 处魔数 = `0x98`、`0xc03`（stub 区）+ `0x14b8`、`0x14c0`（尾部结构）。标准样本这 4 处都是 `55 50 58 21`（`UPX!`），变种全被替换成 `58 58 58 58`（`XXXX`）——两文件逐字节对比全文件恰好 12 字节不同（每处 4 字节、第 3 字节 `58 21`→`58 58` 有重叠故计数为 12），都在这 4 处偏移内。
 尾部 `7c 11 01 00`（`0x0001117C` 小端）= **70012**：UPX 尾部结构记录的解压后大小，远大于文件自身 5348 字节——F7 的字节级依据。
 
+输出格式：
+
+000014b0: 0004 80ff 0000 0000 5550 5821 0000 0000  ........UPX!....
+└───┬──┘ └──────────┬──────────┘ └────┬─────┘ └───┬───┘
+  偏移          16 字节的十六进制       分组空格   ASCII 旁注
+  (hex)         (每组 2 字节)
+
+命令格式Lxxd -s <起始偏移> -l <长度> <文件>
+
 ### 熵（F2）的一行手算版
 
 ```bash
@@ -113,15 +161,25 @@ python -c "import math,collections;d=open('samples/so/libtarget_orig.so','rb').r
 #   => entropy=4.470
 ```
 
-### upx 批量探测
+### upx 批量探测（逐条 upx -t）
+
+> 本工程的 `tools/upx_probe.py` 只是下面这些 `upx` 调用的批量包装（脚本路线的一键版见
+> `SCRIPT.md`「速查」）；命令行路线直接逐条跑，结论完全相同。
 
 ```bash
-# upx_probe.py = 批量 upx -t/-l/-d 的包装（一次看清四个样本谁可自动解包）
-python tools/upx_probe.py samples/so/libtarget_orig.so samples/so/libtarget_upx.so samples/so/libtarget_upx_variant.so samples/so/libtarget_stripped.so
-#   => orig:    upx -t FAIL (rc=2)   -- 需要手工/动态脱壳
-#   => upx:     upx -t OK;  -l 显示 70012 -> 5348 7.64% linux/arm;  -d OK -> 70012 bytes
-#   => variant: upx -t FAIL (rc=2)   -- 需要手工/动态脱壳
-#   => stripped: upx -t FAIL (rc=2)  -- 需要手工/动态脱壳
+# 逐个样本验证：只有标准壳 upx -t 通过，其余报 NotPackedException
+./upx.exe -t samples/so/libtarget_orig.so
+#   => upx: samples/so/libtarget_orig.so: NotPackedException: not packed by UPX / Tested 0 files.  -- 原始 .so 非壳
+./upx.exe -t samples/so/libtarget_upx.so
+#   => testing samples/so/libtarget_upx.so [OK]  /  Tested 1 file.   -- 标准壳，可 -d
+./upx.exe -t samples/so/libtarget_upx_variant.so
+#   => upx: samples/so/libtarget_upx_variant.so: NotPackedException: not packed by UPX / Tested 0 files.  -- 变种壳，魔数被换
+./upx.exe -t samples/so/libtarget_stripped.so
+#   => upx: samples/so/libtarget_stripped.so: NotPackedException: not packed by UPX / Tested 0 files.  -- B13 样本，无 UPX 特征
+
+# 标准壳再看压缩比（-l 列表），然后 -d 解出对照
+./upx.exe -l samples/so/libtarget_upx.so
+#   => 70012 ->   5348   7.64%   linux/arm   samples/so/libtarget_upx.so
 ```
 
 ---
@@ -141,9 +199,10 @@ python tools/upx_probe.py samples/so/libtarget_orig.so samples/so/libtarget_upx.
 ### 变种壳：命令行手改 4 处偏移（解法 A 的手动版）
 
 ```bash
-# 先实证确认真魔数（静态候选有巧合项，必须 upx -t 实证）
-python tools/detect_packer.py samples/so/libtarget_upx_variant.so --verify
-#   => b'XXXX' x4 -> upx -t OK   <= 真魔数；其余 \x00\x00|\x11 等候选均 FAIL
+# 前置（脚本路线）：候选 token 的"批量打补丁 + 逐个 upx -t 实证"是 tools/detect_packer.py
+# --verify 的自动化（命令与完整输出见 SCRIPT.md「判定」）；命令行路线不重跑它，直接采用
+# 实证结论：真魔数 = b'XXXX'（4 处全改后 upx -t 通过），其余 \x00\x00|\x11 等候选均为巧合项。
+# 手工复核就是下面这条路：4 处全改 -> upx -t -> 通过即证明候选为真。
 
 # 命令行等价的"十六进制编辑器手改"：把 4 处偏移各 4 字节还原成 UPX!
 python -c "
@@ -164,15 +223,16 @@ python -c "open('fixed.so','wb').write(open('samples/so/libtarget_upx_variant.so
 `NotPackedException: not packed by UPX`——UPX 校验和覆盖所有内嵌魔数。
 若 4 处全改后仍失败 → Stub/控制流/压缩参数也被改 → 转解法 B（`SCRIPT.md`「脱壳」）。
 
-### 解法 B 的命令行演练
+### 解法 B 的命令行边界（无纯命令行等价物，指向 SCRIPT）
 
-```bash
-# simulate_dump 按 PT_LOAD 生成"运行态内存镜像"，dump_fix 重建可载入的 ELF
-python tools/simulate_dump.py samples/so/libtarget_orig.so analysis_output/sim_dump.bin
-#   => [+] simulated dump -> analysis_output/sim_dump.bin  base=0x0 size=77824 (from 3 PT_LOAD, 32-bit)
-python tools/dump_fix.py analysis_output/sim_dump.bin 0x0 analysis_output/dump_fixed.so --arch arm
-#   => [+] wrote analysis_output/dump_fixed.so: base=0x0 size=77824 arch=arm entry=0x0
-```
+dump 镜像生成（`simulate_dump.py`）与 ELF 重建（`dump_fix.py`）是本仓 Python 工具的职责，
+通用命令没有直接等价物——真机上这两步对应 Frida dump 与手工 ELF Fix（`SCRIPT.md`「脱壳」
+给了完整脚本与真机 JavaScript）。命令行路线到此交棒：
+
+- **演练产物**：`analysis_output/sim_dump.bin`（77824 字节，3 个 PT_LOAD 的平坦镜像）与
+  `analysis_output/dump_fixed.so`（重建后的可载入 ELF）——两条路线共用同一份产物；
+- **命令本体与实跑输出**：见 `SCRIPT.md`「脱壳 · 解法 B」；
+- **产物复核属 GUI 路线**：`dump_fixed.so` 载入 IDA 看调用链与锚点，见 `GUI.md`「脱壳 · 解法 B」。
 
 ---
 
@@ -224,11 +284,9 @@ cmp -l samples/so/libtarget_orig.so unpacked.so
 
 复位与回归命令同 `SCRIPT.md`「反复练习」（`reset_lab.py` / `check_so_samples.py`）；命令行路线的增量只有一条：**练完自己用 `xxd` 找 4 处 `XXXX`，再用 `cmp` 验证你手改的 `fixed.so` 与脚本产物 `unpacked.so` 逐字节一致**——两个路线的产物完全可互换，互为校验。
 
-```bash
-# 练习产物判脏（out.so/fixed.so/unpacked.so 都会被 reset 识别为练习产物）
-python tools/reset_lab.py status
-#   => 列出练习产物；restore 一键清掉
-```
+实验台的判脏与复位是脚本路线的职责（`reset_lab.py` status / restore，命令与实跑输出见
+`SCRIPT.md`「反复练习」）；命令行路线只记一条判读：`fixed.so` / `out.so` / `unpacked.so`
+这些练习产物落在工程根，`reset_lab.py` 按 glob 识别并清理，练完不用手动删。
 
 ---
 
@@ -266,7 +324,7 @@ python -c "d=bytearray(open('samples/so/libtarget_upx_variant.so','rb').read());
 sha256sum samples/so/libtarget_orig.so unpacked.so
 cmp -l samples/so/libtarget_orig.so unpacked.so        # => 仅 1 处：17 列 03 vs 02（e_type）
 
-# 回归 / 复位
-python tools/check_so_samples.py            # => 0 项失败
-python tools/reset_lab.py restore
+# 回归 / 复位（脚本路线职责，命令见 SCRIPT.md「反复练习」与「速查」）
+#   python tools/check_so_samples.py   => 0 项失败
+#   python tools/reset_lab.py restore
 ```
