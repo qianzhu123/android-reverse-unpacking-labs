@@ -76,15 +76,19 @@ Thumbs.db
 # only sha256 + provenance + conclusions — NEVER the binary itself (authorization /
 # redistribution gate). Self-built labs (PROMPT.md) DO commit their samples, so no
 # repo-wide glob is safe here: add one rule per real-target lab when you create it, e.g.
-#   frida-labs/samples/apks/*.apk
-#   frida-labs/samples/native/*.so
-#   frida-labs/samples/dex/*.dex
-uncrackable-l1/samples/apks/*.apk
-uncrackable-l1/samples/dex/*.dex
-uncrackable-l1/samples/native/*.so
-uncrackable-l2/samples/apks/*.apk
-uncrackable-l2/samples/dex/*.dex
-uncrackable-l2/samples/native/*.so
+#   uncrackable/l1/samples/apks/*.apk
+#   uncrackable/l1/samples/native/*.so
+#   uncrackable/l1/samples/dex/*.dex
+uncrackable/l1/samples/apks/*.apk
+uncrackable/l1/samples/dex/*.dex
+uncrackable/l1/samples/native/*.so
+uncrackable/l2/samples/apks/*.apk
+uncrackable/l2/samples/dex/*.dex
+uncrackable/l2/samples/native/*.so
+uncrackable/l3/samples/apks/*.apk
+uncrackable/l3/samples/dex/*.dex
+uncrackable/l3/samples/native/*.so
 
-# Lab-local frida-server / emulator tooling (downloaded, large, re-fetchable)
+# Lab-local emulator/frida tooling (large, re-fetchable — see README setup section)
 .tools/
+uncrackable/tools/frida-server*

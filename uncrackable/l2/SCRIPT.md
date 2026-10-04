@@ -24,7 +24,7 @@ uncrackable-l2/
 ├── samples/{apks,native,dex}/…          # 目标 & 提取物（gitignored）
 ├── pristine/provenance.json             # 来源+授权+环境指纹+结论
 ├── analysis_output/                     # 反汇编/反编译产物（可清）
-├── tools/hook_run.py                    # Frida 运行器
+├── (runner: ../tools/hook_run.py, shared)
 ├── frida/{enumerate,probe,solve}.js     # 动态 hook
 └── logs/solve-run.txt                   # 设备侧证据
 ```
@@ -69,11 +69,11 @@ BIN=$(dirname "$(command -v llvm-objdump)")
 
 ```bash
 # ① 枚举/存活探测（确认 Java bridge 与目标类）
-../.venv/Scripts/python.exe tools/hook_run.py \
+../../.venv/Scripts/python.exe ../tools/hook_run.py \
     --package owasp.mstg.uncrackable2 --script frida/probe.js --seconds 5
 
 # ② 解题：stub 反调试 + 写门限位 + 调用目标自身 bar()
-../.venv/Scripts/python.exe tools/hook_run.py \
+../../.venv/Scripts/python.exe ../tools/hook_run.py \
     --package owasp.mstg.uncrackable2 --script frida/solve.js --seconds 7
 #   => [+] stubbed MainActivity.init()
 #   => [bypass] libfoo.so base=0x7b4db1adc000 gate[+0x400c]=1

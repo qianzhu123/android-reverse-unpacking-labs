@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""uncrackable-l1 lab · dynamic runner (real-target route, see PROMPT-REAL.md)
+"""shared dynamic runner for the uncrackable/* real-target labs (see PROMPT-REAL.md)
 
-Spawns the target under Frida, loads frida/hook.js, prints hook output for a bounded
-window, then detaches. Bounded by design — a real-target session must not hang.
+Spawns the target under Frida, loads the lab's frida/*.js, prints hook output for a
+bounded window, then detaches. Bounded by design — a real-target session must not hang.
 
-Usage:
-    python tools/hook_run.py --package owasp.mstg.uncrackable1 --script frida/hook.js --seconds 12
+Usage (run from a lab dir, e.g. uncrackable/l1):
+    ../../.venv/Scripts/python.exe ../tools/hook_run.py \
+        --package owasp.mstg.uncrackable1 --script frida/solve.js --seconds 8
 
-Venv: run with the repo-local interpreter (../.venv/Scripts/python.exe) — frida is
-installed per-repo, never globally.
+Venv: run with the repo-local interpreter (.venv at the repo root) — frida is installed
+per-repo, never globally.
 """
 import argparse
 import os
@@ -34,10 +35,8 @@ def main():
     ap.add_argument("--device", default="usb", help="frida device id (default usb/adb)")
     args = ap.parse_args()
 
-    lab_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    script_path = args.script
-    if not os.path.isabs(script_path):
-        script_path = os.path.join(lab_root, script_path)
+    # script path is relative to the CURRENT working dir (the lab dir), not the runner's dir
+    script_path = os.path.abspath(args.script)
 
     device = frida.get_usb_device(5) if args.device == "usb" else frida.get_device(args.device, 5)
     print(f"[*] device: {device.name}  package: {args.package}  script: {script_path}")

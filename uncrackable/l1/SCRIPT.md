@@ -25,7 +25,7 @@ uncrackable-l1/
 ├── samples/dex/classes.dex               # 提取产物（gitignored）
 ├── pristine/provenance.json              # 来源+授权+环境指纹+结论（PROMPT-REAL 的 pristine）
 ├── analysis_output/classes.dump.txt      # dexdump 产物（可清）
-├── tools/hook_run.py                     # 本仓库 Frida 运行器
+├── (runner: ../tools/hook_run.py, shared)
 ├── build/                                # 环境脚本（四级工具链解析）
 ├── frida/{enumerate,hook,solve}.js       # 动态 hook（一等公民）
 └── logs/solve-run.txt                    # 设备侧证据（gitignored，可重跑再生）
@@ -68,14 +68,14 @@ unzip -o -j samples/apks/UnCrackable-Level1.apk classes.dex -d samples/dex/
 # 用本仓库的 venv 解释器（frida 装在 repo 本地，非全局）
 
 # ① 枚举真实方法签名（先拿 ground truth，别猜 overload）
-../.venv/Scripts/python.exe tools/hook_run.py \
+../../.venv/Scripts/python.exe ../tools/hook_run.py \
     --package owasp.mstg.uncrackable1 --script frida/enumerate.js --seconds 7
 #   => sg.vantagepoint.uncrackable1.MainActivity.a(java.lang.String) -> void
 #   => sg.vantagepoint.a.b.a(android.content.Context) -> boolean  [static]   ← root 检测
 #   => sg.vantagepoint.a.c.a()/.b()/.c() -> boolean  [static]
 
 # ② 跑解题脚本（bypass 守卫 + 主动调用目标自身解密 + oracle）
-../.venv/Scripts/python.exe tools/hook_run.py \
+../../.venv/Scripts/python.exe ../tools/hook_run.py \
     --package owasp.mstg.uncrackable1 --script frida/solve.js --seconds 8
 #   => [+] bypass a.b.a(Context)
 #   => [+] bypass a.c.a()/.b()/.c()
@@ -109,7 +109,7 @@ unzip -o -j samples/apks/UnCrackable-Level1.apk classes.dex -d samples/dex/
 ## §7 可重复练习
 
 - 环境指纹固定在 `pristine/provenance.json`：设备=Android Emulator x86_64 / Android 14 (SDK 34)、frida-server 16.5.9、host frida 16.5.9 / frida-tools 13.7.0。
-- 快速重跑：`../.venv/Scripts/python.exe tools/hook_run.py --package owasp.mstg.uncrackable1 --script frida/solve.js`
+- 快速重跑：`../../.venv/Scripts/python.exe ../tools/hook_run.py --package owasp.mstg.uncrackable1 --script frida/solve.js`
 - 清理：删除 `analysis_output/*` 即可；`samples/` 重下见 `pristine/provenance.json` 的 provenance.url。
 
 ## §8 坑与速查

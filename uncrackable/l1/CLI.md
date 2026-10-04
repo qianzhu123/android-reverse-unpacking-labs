@@ -55,7 +55,7 @@ EMU="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/emulator/emulator"
 
 # ② 起 frida-server（模拟器可 adb root）
 "$ADB" root
-"$ADB" push .tools/frida-server-16.5.9-android-x86_64 /data/local/tmp/frida-server
+"$ADB" push ../tools/frida-server-16.5.9-android-x86_64 /data/local/tmp/frida-server
 "$ADB" shell "chmod 755 /data/local/tmp/frida-server; nohup /data/local/tmp/frida-server >/dev/null 2>&1 &"
 "$ADB" shell "ps -A | grep frida"              # => frida-server
 

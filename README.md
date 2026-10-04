@@ -84,20 +84,14 @@ android-reverse/
     ├── tools/           # analyze-apk.ps1, inspect-native.ps1, logcat.ps1, reset_lab.py
     ├── frida/           # frida-hook.js (Java/native boundary hook)
     └── analysis_output/ # apktool / jadx unpack output (gitignored)
-├── uncrackable-l1/      # REAL-TARGET lab (external: OWASP UnCrackable L1, PROMPT-REAL.md)
-│   ├── SCRIPT.md  CLI.md  GUI.md
-│   ├── samples/{apks,dex}/  # third-party target + extraction (GITIGNORED — sha256 only)
-│   ├── pristine/        # provenance.json: source + authorization + env fingerprint + result
-│   ├── tools/           # hook_run.py (Python+Frida runner)
-│   ├── frida/           # enumerate.js, solve.js
-│   └── logs/  analysis_output/
-├── uncrackable-l2/      # REAL-TARGET lab (external: OWASP UnCrackable L2, native + anti-debug)
-│   ├── SCRIPT.md  CLI.md  GUI.md
-│   ├── samples/{apks,native,dex}/  # third-party target + libfoo.so (GITIGNORED)
-│   ├── pristine/provenance.json
-│   ├── tools/hook_run.py
-│   ├── frida/           # enumerate.js, probe.js, solve.js
-│   └── logs/  analysis_output/
+├── uncrackable/         # REAL-TARGET labs (external: OWASP MASTG UnCrackable, PROMPT-REAL.md)
+│   ├── README.md        # lab-family overview + shared-runner notes
+│   ├── tools/           # hook_run.py (shared Frida runner) + frida-server (gitignored)
+│   ├── l1/              # Level 1 — Java AES check + root detection            [SOLVED]
+│   ├── l2/              # Level 2 — native strncmp + fork/ptrace anti-debug    [SOLVED]
+│   └── l3/              # Level 3 — native check + constructor anti-tamper     [WIP]
+│       # each l*/ : SCRIPT.md CLI.md GUI.md + samples/(gitignored) +
+│       #            pristine/provenance.json + frida/ + analysis_output/ + logs/
 ```
 > `ollvm/` covers *code obfuscation / string protection*, which is outside the
 > packers / shell-protector scope of the other labs, so it does not use the unpacking
@@ -115,13 +109,17 @@ android-reverse/
 | `upx_practice` | vanilla UPX + a **feature-rewritten variant** | self-built NDK `.so` | scoring detector, dump-and-fix, negative / section-stripped samples |
 | `ajiami` | Aijiami DEX hardening — gen-1 (whole-DEX encryption) → gen-2 (class extraction) → gen-3 + string-obfuscation variant | self-built Android app + shell | 3-generation detection, script + manual unpack, negative-sample regression |
 | `ollvm` | Java plaintext / Java XOR / JNI XOR string protection + native control-flow baseline (`nativeOpaque`); OLLVM pass comparison via external fork | self-built Android app (archived debug/release APKs) | three-way SCRIPT/CLI/GUI analysis, verified native address chain (`0x24f10 → 0x24fd4 → 0x14db9`), PowerShell toolchain |
-| `uncrackable-l1` | **real-target** (external): OWASP MASTG UnCrackable Level 1 — AES check + root detection | third-party APK (gitignored) | `PROMPT-REAL.md` route: static recon → Frida spawn-gated bypass → active-invocation oracle (`bar`-style check returns true); frida/venv pinned 16.5.9 |
-| `uncrackable-l2` | **real-target** (external): OWASP MASTG UnCrackable Level 2 — native `strncmp` check + fork/ptrace anti-debug | third-party APK + `libfoo.so` (gitignored) | native reversing (llvm-nm/objdump → `.rodata` secret + `.bss` gate @0x400c), anti-debug bypass, artifact + algorithm oracle |
+| `uncrackable/l1` | **real-target** (external): OWASP MASTG UnCrackable Level 1 — AES check + root detection | third-party APK (gitignored) | `PROMPT-REAL.md` route: static recon → Frida spawn-gated bypass → active-invocation oracle (`bar`-style check returns true); frida/venv pinned 16.5.9 |
+| `uncrackable/l2` | **real-target** (external): OWASP MASTG UnCrackable Level 2 — native `strncmp` check + fork/ptrace anti-debug | third-party APK + `libfoo.so` (gitignored) | native reversing (llvm-nm/objdump → `.rodata` secret + `.bss` gate @0x400c), anti-debug bypass, artifact + algorithm oracle |
+| `uncrackable/l3` | **real-target** (external) · **WIP**: OWASP MASTG UnCrackable Level 3 — native check + constructor-level anti-tamper watchdog + integrity check | third-party APK + `libfoo.so` (gitignored) | static done (bar = `keyTable ^ plaintext`, runtime decrypt); **dynamic route not yet passed** — anti-Frida watchdog; blocker + next directions documented |
 
 The first four labs are **self-built, byte-reproducible** (`PROMPT.md` route).
-The two `uncrackable-*` labs are **external real targets** (`PROMPT-REAL.md` route):
-no source, no golden baseline — verification is a behavior/artifact **oracle**, and the
-third-party samples are gitignored (repo carries sha256 + provenance + conclusions only).
+The `uncrackable/` labs are **external real targets** (`PROMPT-REAL.md` route) — one
+family under one folder (`uncrackable/l1|l2|l3`) sharing `uncrackable/tools/`, since they
+share a target family and environment: no source, no golden baseline — verification is a
+behavior/artifact **oracle**, and the third-party samples are gitignored (repo carries
+sha256 + provenance + conclusions only).
+`uncrackable/l3` is committed as an **unsolved work item** (honest WIP), not a solved lab.
 
 Each lab's docs are `SCRIPT.md` (script route) + `CLI.md` (command-line route) +
 `GUI.md` (GUI-tool route) — three parallel documents sharing one section skeleton.
@@ -204,13 +202,13 @@ Replace the detector/solver names with those of the lab you are in
 `detect.py` / `unpack_v1.py` … for `ajiami`). Each lab's `SCRIPT.md` / `MANUAL.md` document its exact
 commands and real, pasted output.
 
-**Real-target labs (`uncrackable-l1` / `uncrackable-l2`) run differently** — dynamic is the
+**Real-target labs (`uncrackable/l1` / `uncrackable/l2`) run differently** — dynamic is the
 primary route and there is no golden baseline. They need an emulator + frida-server, use the
 repo-local venv, and verify by oracle. Example:
 
 ```bash
 # from the repository root (emulator up, frida-server running — see the lab's CLI.md §4)
-cd uncrackable-l1
+cd uncrackable/l1
 
 # ① static recon (locate the check) — llvm-* from the NDK
 ../.venv/Scripts/python.exe tools/hook_run.py --package owasp.mstg.uncrackable1 --script frida/enumerate.js
@@ -220,6 +218,81 @@ cd uncrackable-l1
 #   => [recovered] secret = "I want to believe"
 #   => [oracle] uncrackable1.a.a(secret) = true
 ```
+
+---
+
+## Real-target lab environment setup
+
+The `uncrackable-*` labs need an emulator + a version-matched frida-server. Everything is
+**project-local and reproducible** — this section is the single source of truth for that
+environment, so the labs can be resumed after any break.
+
+**Pinned versions (the environment fingerprint — do not drift):**
+
+| Component | Version | Why pinned |
+|-----------|---------|------------|
+| frida (host, in `.venv`) | **16.5.9** | 17.x's Java bridge drops the `Java` global; the labs' hooks require it |
+| frida-tools | 13.7.0 | matches frida 16.5.9 |
+| frida-server (on device) | **16.5.9** `android-x86_64` | **must equal the host frida** or attach fails |
+| AVD / system image | `n4tive_lab` · Android 14 (SDK 34) · `google_apis;x86_64` | x86_64 matches the emulator ABI |
+| Python (`.venv`) | 3.13 | repo-local interpreter |
+| NDK binutils | `llvm-*` on PATH (android-ndk-r27d) | bare GNU names do not exist on this machine |
+
+**One-time setup (already done — reproduce on a fresh machine):**
+
+```bash
+# 1. project-local venv + pinned frida  (NEVER global: a global frida install breaks
+#    the machine's websockets/langsmith pins; keep everything in .venv/)
+python -m venv .venv
+./.venv/Scripts/python.exe -m pip install "frida==16.5.9" "frida-tools==13.7.0"
+
+# 2. system image + AVD  (sdkmanager needs SKIP_JDK_VERSION_CHECK on JDK 26)
+SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+export SKIP_JDK_VERSION_CHECK=1
+yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" "system-images;android-34;google_apis;x86_64"
+"$SDK/cmdline-tools/latest/bin/avdmanager" create avd -n n4tive_lab \
+    -k "system-images;android-34;google_apis;x86_64" -d pixel_5 --force
+
+# 3. frida-server for the device (matches host frida), kept out of git in .tools/
+curl -L -o .tools/frida-server-16.5.9-android-x86_64.xz \
+    https://github.com/frida/frida/releases/download/16.5.9/frida-server-16.5.9-android-x86_64.xz
+python -c "import lzma,shutil;shutil.copyfileobj(lzma.open('.tools/frida-server-16.5.9-android-x86_64.xz','rb'),open('.tools/frida-server-16.5.9-android-x86_64','wb'))"
+```
+
+**Per-session bring-up (do this before running any lab):**
+
+```bash
+SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"; ADB="$SDK/platform-tools/adb"
+
+# boot the emulator headless (background)
+"$SDK/emulator/emulator" -avd n4tive_lab -no-window -no-audio -no-boot-anim \
+    -no-snapshot -gpu swiftshader_indirect -port 5554 &
+"$ADB" wait-for-device
+until [ "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 5; done
+
+# push + start frida-server as root (emulator supports `adb root`)
+"$ADB" root; "$ADB" wait-for-device
+MSYS_NO_PATHCONV=1 "$ADB" push .tools/frida-server-16.5.9-android-x86_64 /data/local/tmp/frida-server
+"$ADB" shell "chmod 755 /data/local/tmp/frida-server; nohup /data/local/tmp/frida-server >/dev/null 2>&1 &"
+
+# verify connectivity, then install a target
+./.venv/Scripts/frida-ps.exe -U | head
+"$ADB" install -r uncrackable/l1/samples/apks/UnCrackable-Level1.apk
+
+# stop the emulator when done
+"$ADB" emu kill
+```
+
+**Likely-required env vars** (this machine uses non-standard SDK/NDK locations):
+`ANDROID_HOME` / `ANDROID_SDK_ROOT` (SDK), and the NDK `llvm-*` binutils must be on
+`PATH`. `JAVA_HOME` handling, `MSYS_NO_PATHCONV=1` for adb pushes, and the
+`SKIP_JDK_VERSION_CHECK=1` sdkmanager workaround are all environment facts recorded in
+each lab's `SCRIPT.md` §8.
+
+**Lab status:** `uncrackable/l1` ✅ and `uncrackable/l2` ✅ are solved (oracle verified,
+committed). `uncrackable/l3` is a **WIP whose dynamic route is not yet passed** — its
+`SCRIPT.md` documents the blocker (constructor-level anti-tamper watchdog) and the next
+attack directions; it is committed as a work item, not as a solved lab.
 
 ---
 
