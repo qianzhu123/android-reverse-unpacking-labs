@@ -53,13 +53,13 @@ This repository is for **authorized security education, training, and self-study
 ```text
 android-reverse/
 ├── README.md            # this file
-├── AGENTS.md            # agent quick-start (paste to an agent instead of re-explaining)
 ├── LICENSE              # MIT
 ├── .gitignore
 ├── PROMPT.md            # prompt template: self-built, byte-reproducible lab
 ├── PROMPT-REAL.md       # prompt template: external real-target analysis lab
+│   # (every sub-project below also ships its own AGENTS.md — paste it to an agent to onboard)
 ├── 360jiagu/            # 360-style native hardening (modeled as a modified UPX)
-│   ├── SCRIPT.md  CLI.md  GUI.md
+│   ├── SCRIPT.md  CLI.md  GUI.md  AGENTS.md
 │   ├── src/             # libtarget source (target.c, policy_inc.h)
 │   ├── tools/           # detectors, solvers, variant/negative generators, reset_lab.py
 │   ├── build/           # build_android.sh, pack.sh, locate.sh, gen_policy.py
