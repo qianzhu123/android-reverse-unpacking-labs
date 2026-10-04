@@ -1,0 +1,35 @@
+{
+  "lab": "uncrackable-l2",
+  "prompt": "PROMPT-REAL.md",
+  "target": {
+    "name": "OWASP MASTG UnCrackable Level 2",
+    "package": "owasp.mstg.uncrackable2",
+    "kind": "public practice target (native check + anti-debug)"
+  },
+  "provenance": {
+    "source": "https://raw.githubusercontent.com/OWASP/owasp-mastg/master/Crackmes/Android/Level_02/UnCrackable-Level2.apk",
+    "upstream_repo": "OWASP/owasp-mastg",
+    "pulled": "2026-10-04",
+    "sha256": "4c7980ef1f6cc29508f38417c2a5b5b7721eeb4a3d7f00a0c1a08f5192fa6ddd",
+    "bytes": 901022
+  },
+  "authorization": {
+    "basis": "public educational crackme published by OWASP for reverse-engineering training",
+    "redistribution": "sample NOT committed — gitignored; repo carries sha256 + provenance + conclusions only"
+  },
+  "environment_fingerprint": {
+    "device": "Android Emulator (sdk_gphone64_x86_64)",
+    "android": "14 (SDK 34)",
+    "abi": "x86_64",
+    "frida_server": "16.5.9-android-x86_64",
+    "host_frida": "16.5.9",
+    "host_frida_tools": "13.7.0",
+    "runner": "tools/hook_run.py"
+  },
+  "result": {
+    "oracle": "algorithm + artifact",
+    "secret": "Thanks for all the fish",
+    "explanation": "libfoo.so CodeCheck.bar(byte[]) strncmps the input against the .rodata string 'Thanks for all the fish' (23 bytes), but only when the .bss gate byte at file offset 0x400c == 1 — a flag the native init() sets after its fork/ptrace anti-debug passes. Under instrumentation the anti-debug breaks (onCreate throws 'Bad file descriptor'), so the bypass stubs MainActivity.init() and writes the gate byte directly; bar() then returns true for the secret and false otherwise.",
+    "log": "logs/solve-run.txt"
+  }
+}
