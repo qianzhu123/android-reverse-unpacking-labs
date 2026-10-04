@@ -55,6 +55,12 @@ unpacker/app_icon_preview.png
 local.properties
 *.local
 
+# Project-local Python virtualenv (dynamic-analysis tooling: frida-tools, etc.).
+# Kept per-repo, never global: avoids polluting the machine-wide interpreter and
+# avoids the websockets/langsmith version conflict a global frida install causes.
+.venv/
+venv/
+
 # ---- IDE / OS junk ----
 .idea/
 *.iml
@@ -64,3 +70,21 @@ Thumbs.db
 
 # ---- Bundle backup of the old ollvm repo history (kept local, not committed) ----
 *.bundle
+
+# ---- Real-target lab samples (see PROMPT-REAL.md) ----
+# A real-target lab analyzes a THIRD-PARTY artifact it does not own. The repo commits
+# only sha256 + provenance + conclusions — NEVER the binary itself (authorization /
+# redistribution gate). Self-built labs (PROMPT.md) DO commit their samples, so no
+# repo-wide glob is safe here: add one rule per real-target lab when you create it, e.g.
+#   frida-labs/samples/apks/*.apk
+#   frida-labs/samples/native/*.so
+#   frida-labs/samples/dex/*.dex
+uncrackable-l1/samples/apks/*.apk
+uncrackable-l1/samples/dex/*.dex
+uncrackable-l1/samples/native/*.so
+uncrackable-l2/samples/apks/*.apk
+uncrackable-l2/samples/dex/*.dex
+uncrackable-l2/samples/native/*.so
+
+# Lab-local frida-server / emulator tooling (downloaded, large, re-fetchable)
+.tools/

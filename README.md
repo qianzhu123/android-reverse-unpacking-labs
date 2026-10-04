@@ -55,7 +55,8 @@ android-reverse/
 ├── README.md            # this file
 ├── LICENSE              # MIT
 ├── .gitignore
-├── PROMPT.md            # reusable prompt template for spinning up a new lab
+├── PROMPT.md            # prompt template: self-built, byte-reproducible lab
+├── PROMPT-REAL.md       # prompt template: external real-target analysis lab
 ├── 360jiagu/            # 360-style native hardening (modeled as a modified UPX)
 │   ├── SCRIPT.md  CLI.md  GUI.md
 │   ├── src/             # libtarget source (target.c, policy_inc.h)
@@ -83,6 +84,20 @@ android-reverse/
     ├── tools/           # analyze-apk.ps1, inspect-native.ps1, logcat.ps1, reset_lab.py
     ├── frida/           # frida-hook.js (Java/native boundary hook)
     └── analysis_output/ # apktool / jadx unpack output (gitignored)
+├── uncrackable-l1/      # REAL-TARGET lab (external: OWASP UnCrackable L1, PROMPT-REAL.md)
+│   ├── SCRIPT.md  CLI.md  GUI.md
+│   ├── samples/{apks,dex}/  # third-party target + extraction (GITIGNORED — sha256 only)
+│   ├── pristine/        # provenance.json: source + authorization + env fingerprint + result
+│   ├── tools/           # hook_run.py (Python+Frida runner)
+│   ├── frida/           # enumerate.js, solve.js
+│   └── logs/  analysis_output/
+├── uncrackable-l2/      # REAL-TARGET lab (external: OWASP UnCrackable L2, native + anti-debug)
+│   ├── SCRIPT.md  CLI.md  GUI.md
+│   ├── samples/{apks,native,dex}/  # third-party target + libfoo.so (GITIGNORED)
+│   ├── pristine/provenance.json
+│   ├── tools/hook_run.py
+│   ├── frida/           # enumerate.js, probe.js, solve.js
+│   └── logs/  analysis_output/
 ```
 > `ollvm/` covers *code obfuscation / string protection*, which is outside the
 > packers / shell-protector scope of the other labs, so it does not use the unpacking
@@ -100,6 +115,13 @@ android-reverse/
 | `upx_practice` | vanilla UPX + a **feature-rewritten variant** | self-built NDK `.so` | scoring detector, dump-and-fix, negative / section-stripped samples |
 | `ajiami` | Aijiami DEX hardening — gen-1 (whole-DEX encryption) → gen-2 (class extraction) → gen-3 + string-obfuscation variant | self-built Android app + shell | 3-generation detection, script + manual unpack, negative-sample regression |
 | `ollvm` | Java plaintext / Java XOR / JNI XOR string protection + native control-flow baseline (`nativeOpaque`); OLLVM pass comparison via external fork | self-built Android app (archived debug/release APKs) | three-way SCRIPT/CLI/GUI analysis, verified native address chain (`0x24f10 → 0x24fd4 → 0x14db9`), PowerShell toolchain |
+| `uncrackable-l1` | **real-target** (external): OWASP MASTG UnCrackable Level 1 — AES check + root detection | third-party APK (gitignored) | `PROMPT-REAL.md` route: static recon → Frida spawn-gated bypass → active-invocation oracle (`bar`-style check returns true); frida/venv pinned 16.5.9 |
+| `uncrackable-l2` | **real-target** (external): OWASP MASTG UnCrackable Level 2 — native `strncmp` check + fork/ptrace anti-debug | third-party APK + `libfoo.so` (gitignored) | native reversing (llvm-nm/objdump → `.rodata` secret + `.bss` gate @0x400c), anti-debug bypass, artifact + algorithm oracle |
+
+The first four labs are **self-built, byte-reproducible** (`PROMPT.md` route).
+The two `uncrackable-*` labs are **external real targets** (`PROMPT-REAL.md` route):
+no source, no golden baseline — verification is a behavior/artifact **oracle**, and the
+third-party samples are gitignored (repo carries sha256 + provenance + conclusions only).
 
 Each lab's docs are `SCRIPT.md` (script route) + `CLI.md` (command-line route) +
 `GUI.md` (GUI-tool route) — three parallel documents sharing one section skeleton.
@@ -182,19 +204,50 @@ Replace the detector/solver names with those of the lab you are in
 `detect.py` / `unpack_v1.py` … for `ajiami`). Each lab's `SCRIPT.md` / `MANUAL.md` document its exact
 commands and real, pasted output.
 
+**Real-target labs (`uncrackable-l1` / `uncrackable-l2`) run differently** — dynamic is the
+primary route and there is no golden baseline. They need an emulator + frida-server, use the
+repo-local venv, and verify by oracle. Example:
+
+```bash
+# from the repository root (emulator up, frida-server running — see the lab's CLI.md §4)
+cd uncrackable-l1
+
+# ① static recon (locate the check) — llvm-* from the NDK
+../.venv/Scripts/python.exe tools/hook_run.py --package owasp.mstg.uncrackable1 --script frida/enumerate.js
+
+# ② solve + verify by oracle (no byte-diff: the app's own check must return true)
+../.venv/Scripts/python.exe tools/hook_run.py --package owasp.mstg.uncrackable1 --script frida/solve.js
+#   => [recovered] secret = "I want to believe"
+#   => [oracle] uncrackable1.a.a(secret) = true
+```
+
 ---
 
 ## Adding a new lab
 
+Pick the prompt by lab type — **the two prompts are siblings, not versions of each other**:
+
+| Lab type | Prompt | Situation |
+|----------|--------|-----------|
+| Self-built, byte-reproducible | `PROMPT.md` | You compile the sample from `src/`; packed/unpacked share one source and compare **byte-for-byte** against `pristine/`. |
+| External real target | `PROMPT-REAL.md` | You do **not** have the source or a golden baseline; dynamic (Frida / memory dump / active invocation) is the primary route and verification is a **behavior oracle**, not a byte diff. |
+
 1. Create a new folder under the repository root.
-2. Copy the structure (`src/`, `tools/`, `build/`, `pristine/`, `analysis_output/`,
-   `SCRIPT.md` + `MANUAL.md`).
-3. Follow `PROMPT.md` — it is a reusable prompt that fills in the topic, the two-doc
-   `§0`–`§8` skeleton, the negative-sample discipline, and the four-tier toolchain resolution.
-4. Keep the protector within the *packer / shell* scope (UPX & variants, compression
-   shells, memory dump, OEP, ELF Fix, whole-DEX encryption, class extraction). Code
-   obfuscation / string protection / VMP teaching is out of scope for this repo — keep it
-   separate.
+2. Copy the structure appropriate to the type above (`src/`, `tools/`, `build/`, `pristine/`,
+   `analysis_output/`, `SCRIPT.md` + `MANUAL.md`); a real-target lab drops `src/`/`shell/`,
+   repurposes `pristine/` as a provenance record, and adds `frida/` + `logs/` (see
+   `PROMPT-REAL.md`'s layout deltas).
+3. Follow the matching prompt — it fills in the topic, the `§0`–`§8` skeleton, the
+   negative-sample discipline (self-built) or the authorization/oracle discipline
+   (real target), and the four-tier toolchain resolution.
+4. **Self-built labs** (`PROMPT.md`): keep the protector within the *packer / shell*
+   scope (UPX & variants, compression shells, memory dump, OEP, ELF Fix, whole-DEX
+   encryption, class extraction). Code obfuscation / string protection / VMP teaching is
+   out of scope for that prompt — for those, use a separate prompt.
+   **Real-target labs** (`PROMPT-REAL.md`): the packer/shell-scope restriction does not
+   apply — dynamic analysis, anti-analysis bypass, native algorithm reconstruction, and
+   VMP/protector identification against external samples are all in scope, bounded only
+   by the authorization gate.
 
 ---
 
