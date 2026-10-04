@@ -1,0 +1,36 @@
+{
+  "lab": "uncrackable-l1",
+  "prompt": "PROMPT-REAL.md",
+  "target": {
+    "name": "OWASP MASTG UnCrackable Level 1",
+    "package": "owasp.mstg.uncrackable1",
+    "kind": "public practice target (CTF-style crackme)"
+  },
+  "provenance": {
+    "source": "https://raw.githubusercontent.com/OWASP/owasp-mastg/master/Crackmes/Android/Level_01/UnCrackable-Level1.apk",
+    "upstream_repo": "OWASP/owasp-mastg",
+    "pulled": "2026-10-04",
+    "sha256": "1da8bf57d266109f9a07c01bf7111a1975ce01f190b9d914bcd3ae3dbef96f21",
+    "bytes": 66651
+  },
+  "authorization": {
+    "basis": "public educational crackme published by OWASP for reverse-engineering training",
+    "redistribution": "sample NOT committed — gitignored; repo carries sha256 + provenance + conclusions only"
+  },
+  "environment_fingerprint": {
+    "device": "Android Emulator (sdk_gphone64_x86_64)",
+    "android": "14 (SDK 34)",
+    "abi": "x86_64",
+    "frida_server": "16.5.9-android-x86_64",
+    "host_frida": "16.5.9",
+    "host_frida_tools": "13.7.0",
+    "host_python": "3.13.9 (project venv)",
+    "runner": "tools/hook_run.py"
+  },
+  "result": {
+    "oracle": "algorithm",
+    "secret": "I want to believe",
+    "explanation": "sg.vantagepoint.uncrackable1.a.a(String) returns true only for the AES-decrypted secret; observed true for the recovered value and false for a wrong input.",
+    "log": "logs/solve-run.txt"
+  }
+}
