@@ -53,6 +53,7 @@ This repository is for **authorized security education, training, and self-study
 ```text
 android-reverse/
 ├── README.md            # this file
+├── AGENTS.md            # agent quick-start (paste to an agent instead of re-explaining)
 ├── LICENSE              # MIT
 ├── .gitignore
 ├── PROMPT.md            # prompt template: self-built, byte-reproducible lab
