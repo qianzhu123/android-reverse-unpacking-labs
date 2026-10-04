@@ -86,6 +86,7 @@ android-reverse/
     └── analysis_output/ # apktool / jadx unpack output (gitignored)
 ├── uncrackable/         # REAL-TARGET labs (external: OWASP MASTG UnCrackable, PROMPT-REAL.md)
 │   ├── README.md        # lab-family overview + shared-runner notes
+│   ├── TUTORIAL.md      # guided learning path l1 -> l2 -> l3 (start here)
 │   ├── tools/           # hook_run.py (shared Frida runner) + frida-server (gitignored)
 │   ├── l1/              # Level 1 — Java AES check + root detection            [SOLVED]
 │   ├── l2/              # Level 2 — native strncmp + fork/ptrace anti-debug    [SOLVED]

@@ -9,11 +9,16 @@ These three labs share one target family (OWASP MASTG UnCrackable), so they live
 directories. The environment (emulator + frida-server + venv) is documented once, at the
 repo root: **README → "Real-target lab environment setup"**.
 
+**New here?** Read **`TUTORIAL.md`** first — it is the guided path (what to learn per
+level, order to read the three docs, self-check list). Per-level operation manuals are
+each lab's `SCRIPT.md` / `CLI.md` / `GUI.md`.
+
 ## Layout
 
 ```text
 uncrackable/
 ├── README.md            # this file
+├── TUTORIAL.md          # guided learning path (l1 -> l2 -> l3) — start here
 ├── tools/               # shared across l1/l2/l3
 │   ├── hook_run.py      #   spawn+sideload Frida runner
 │   └── frida-server-16.5.9-android-x86_64(.xz)   # gitignored
