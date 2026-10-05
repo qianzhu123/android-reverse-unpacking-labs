@@ -57,9 +57,8 @@ android-reverse/
 ├── .gitignore
 ├── PROMPT.md            # prompt template: self-built, byte-reproducible lab
 ├── PROMPT-REAL.md       # prompt template: external real-target analysis lab
-│   # (every sub-project below also ships its own AGENTS.md — paste it to an agent to onboard)
 ├── 360jiagu/            # 360-style native hardening (modeled as a modified UPX)
-│   ├── SCRIPT.md  CLI.md  GUI.md  AGENTS.md
+│   ├── SCRIPT.md  CLI.md  GUI.md
 │   ├── src/             # libtarget source (target.c, policy_inc.h)
 │   ├── tools/           # detectors, solvers, variant/negative generators, reset_lab.py
 │   ├── build/           # build_android.sh, pack.sh, locate.sh, gen_policy.py
