@@ -9,6 +9,11 @@
 > - **Each lab's three documents (`SCRIPT.md` / `CLI.md` / `GUI.md`) are written in Chinese** —
 >   they are teaching material for the author's own study loop; technical terms,
 >   tool names, file paths, and pasted tool output stay in their original language.
+> - **Each lab root also carries `AGENTS.md` — written in English.** It is the
+>   agent-facing ground-truth doc: what an agent reads before touching that lab. It
+>   holds real paths, line numbers, thresholds, byte offsets, and command output that
+>   was **actually read and actually run** — never a restatement of the Chinese
+>   teaching docs. Every lab ships one.
 > - Commit messages follow the English convention even when they describe
 >   Chinese-language lab docs (e.g. `docs(ajiami): ...`).
 
@@ -158,8 +163,8 @@ prompt for those; write a separate one.
 Requirements:
 
 1. Documents (top priority)
-   - All knowledge goes into three parallel documents (one shared chapter skeleton,
-     section-for-section): do not create docs/ or any other markdown file;
+   - All teaching knowledge goes into three parallel documents (one shared chapter
+     skeleton, section-for-section): do not create docs/ or any other markdown file;
      no per-lab README.md.
        `SCRIPT.md` — script route: live runs of this repo's Python tools in `tools/`
                      (detect / unpack / verify, etc.).
@@ -171,12 +176,29 @@ Requirements:
                     at the corresponding steps.
      **The three lab documents are written in Chinese** (see the language convention
      at the top of this file); tool output and paths stay as-is.
+   - **`AGENTS.md` (English, mandatory).** Each lab root also ships exactly one
+     `AGENTS.md` — the agent-facing ground-truth doc, written in English. It is held to
+     a stricter bar than the teaching docs: it must come from **actually opening the
+     code and actually running the commands**, not from restating `SCRIPT.md`/`CLI.md`.
+     It must carry, per tool: input/output, the concrete code path (function names and
+     behaviour), and the failure/edge branches; per criterion: the exact file+line the
+     threshold lives on, why that value, and what input false-triggers it; the real
+     command output (pasted verbatim) plus how to read it and what to do on failure;
+     the file-format layer details (byte offsets, magic/anchor lists, where a sample's
+     size/hash actually comes from); a root-cause explanation of every pitfall; and the
+     interface contract with sibling labs / `unpacker/` (who loads whose module, by
+     path). It is a fourth root file, not a replacement for the three teaching docs —
+     the three stay Chinese, `AGENTS.md` is English.
+
    - **Fixed directory layout (mandatory — copy verbatim, do not invent)**. The lab
      root contains **only** the entries below. Before creating any new directory or
      flat file, check it fits one slot; if it does not fit, it must not be created:
        ```
        <project-name>/
-       ├── SCRIPT.md / CLI.md / GUI.md   # the only three docs; no other md at lab root
+       ├── SCRIPT.md / CLI.md / GUI.md   # the three teaching docs (Chinese)
+       ├── AGENTS.md      # agent-facing ground-truth doc (English); anchors on real
+       │                  # code reads + real command runs, not a restatement of the
+       │                  # teaching docs above; one per lab
        ├── samples/        # analysis targets (four bins by content: apks/dex/payloads/
        │                    # native; SO labs use so/ instead of apks/)
        │                    # all "analyzed files" live here — never flat at lab root
@@ -401,8 +423,8 @@ Requirements:
 | Item | Convention |
 |---|---|
 | Project location | A `<project-name>` folder under the repo root (new folder each time); docs say "the lab root" only |
-| Documents | Three parallel docs `SCRIPT.md` (script) + `CLI.md` (CLI) + `GUI.md` (GUI), one shared skeleton |
-| **Language** | **Repo-level files & commits in English; each lab's three docs in Chinese** (teaching material; tool output/paths stay original) |
+| Documents | Three parallel teaching docs `SCRIPT.md` (script) + `CLI.md` (CLI) + `GUI.md` (GUI), one shared skeleton, plus `AGENTS.md` (agent ground-truth) |
+| **Language** | **Repo-level files & commits in English; each lab's three docs in Chinese** (teaching material; tool output/paths stay original); **each lab's `AGENTS.md` in English** |
 | Method layering | SCRIPT = this repo's tools/ Python code; CLI = unzip/aapt2/xxd/readelf generic commands; GUI = jadx/IDA/Ghidra/010 Editor/GDA/JEB/binwalk(-E)/apkid |
 | Topic | Android **packers & unpacking** (UPX/variants/compression shells/memory dump/OEP/ELF Fix/whole-DEX encryption/class extraction) |
 | Out of scope | Code obfuscation / string protection / VMP teaching → separate prompt |

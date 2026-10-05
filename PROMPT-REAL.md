@@ -14,6 +14,11 @@
 > - **Each lab's three documents (`SCRIPT.md` / `CLI.md` / `GUI.md`) are written in
 >   Chinese** — they are teaching material for the author's own study loop; technical
 >   terms, tool names, file paths, and pasted tool output stay in their original language.
+> - **Each lab root also carries `AGENTS.md` — written in English.** It is the
+>   agent-facing ground-truth doc: what an agent reads before touching that lab. It holds
+>   real paths, line numbers, thresholds, byte offsets, addresses, and command output that
+>   was **actually read and actually run** — never a restatement of the Chinese teaching
+>   docs. Every lab ships one.
 > - Commit messages follow the English convention even when they describe
 >   Chinese-language lab docs (e.g. `docs(frida-labs): ...`).
 

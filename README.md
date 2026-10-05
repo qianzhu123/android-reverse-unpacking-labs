@@ -58,7 +58,7 @@ android-reverse/
 ├── PROMPT.md            # prompt template: self-built, byte-reproducible lab
 ├── PROMPT-REAL.md       # prompt template: external real-target analysis lab
 ├── 360jiagu/            # 360-style native hardening (modeled as a modified UPX)
-│   ├── SCRIPT.md  CLI.md  GUI.md
+│   ├── SCRIPT.md  CLI.md  GUI.md  AGENTS.md
 │   ├── src/             # libtarget source (target.c, policy_inc.h)
 │   ├── tools/           # detectors, solvers, variant/negative generators, reset_lab.py
 │   ├── build/           # build_android.sh, pack.sh, locate.sh, gen_policy.py
@@ -66,16 +66,16 @@ android-reverse/
 │   ├── pristine/        # baseline copy + sha256 manifest
 │   └── analysis_output/ # detection / dump / solve reports
 ├── upx_practice/        # vanilla UPX + a feature-rewritten variant
-│   ├── SCRIPT.md  CLI.md  GUI.md
+│   ├── SCRIPT.md  CLI.md  GUI.md  AGENTS.md
 │   ├── src/ tools/ build/ samples/so/ pristine/ analysis_output/
 ├── ajiami/              # Aijiami-style DEX hardening: 3 generations + string-obf variant
-    ├── SCRIPT.md  CLI.md  GUI.md
+    ├── SCRIPT.md  CLI.md  GUI.md  AGENTS.md
     ├── app/  shell/  neg/  vmp/  samples/{apks,dex,payloads}/
     ├── tools/           # detect.py, unpack_v1/v2/v3.py, check_negatives.py, ...
     ├── build/           # build_*.sh, pack.sh, env.sh, lab.keystore
     ├── pristine/  logs/  analysis_output/
 └── ollvm/               # OLLVM / string-protection lab (code obfuscation)
-    ├── SCRIPT.md  CLI.md  GUI.md
+    ├── SCRIPT.md  CLI.md  GUI.md  AGENTS.md
     ├── samples/apks/    # archived debug/release APKs (hashes in the docs)
     ├── pristine/        # sha256 baseline of samples/ (reset_lab.py restore source)
     ├── app/             # self-contained gradle project (gradle root lives here):
@@ -84,9 +84,14 @@ android-reverse/
     ├── tools/           # analyze-apk.ps1, inspect-native.ps1, logcat.ps1, reset_lab.py
     ├── frida/           # frida-hook.js (Java/native boundary hook)
     └── analysis_output/ # apktool / jadx unpack output (gitignored)
+├── unpacker/            # unified analyzer/unpacker tool (read-only bridge over the 3 labs)
+│   ├── AGENTS.md
+│   ├── main.py  analyzer.py  unpack.py  labs.py  regression.py  gui.py  build_exe.py
+│   └── dist/unpacker.exe
 ├── uncrackable/         # REAL-TARGET labs (external: OWASP MASTG UnCrackable, PROMPT-REAL.md)
 │   ├── README.md        # lab-family overview + shared-runner notes
 │   ├── TUTORIAL.md      # guided learning path l1 -> l2 -> l3 (start here)
+│   ├── AGENTS.md
 │   ├── tools/           # hook_run.py (shared Frida runner) + frida-server (gitignored)
 │   ├── l1/              # Level 1 — Java AES check + root detection            [SOLVED]
 │   ├── l2/              # Level 2 — native strncmp + fork/ptrace anti-debug    [SOLVED]
@@ -94,6 +99,8 @@ android-reverse/
 │       # each l*/ : SCRIPT.md CLI.md GUI.md + samples/(gitignored) +
 │       #            pristine/provenance.json + frida/ + analysis_output/ + logs/
 ```
+> Every lab (including `unpacker/` and `uncrackable/`) also ships an English `AGENTS.md`
+> — see the note under "Labs at a glance" below.
 > `ollvm/` covers *code obfuscation / string protection*, which is outside the
 > packers / shell-protector scope of the other labs, so it does not use the unpacking
 > prompt template — but it follows the same three-doc + fixed-directory-layout
@@ -122,8 +129,20 @@ behavior/artifact **oracle**, and the third-party samples are gitignored (repo c
 sha256 + provenance + conclusions only).
 `uncrackable/l3` is committed as an **unsolved work item** (honest WIP), not a solved lab.
 
+> **Agent docs (`AGENTS.md`).** Every lab — `360jiagu`, `upx_practice`, `ajiami`, `ollvm`,
+> `unpacker`, and `uncrackable` — ships a project-level **`AGENTS.md`**, written in English.
+> It is the **agent-facing ground-truth doc**: what an agent reads before touching that lab.
+> It is held to a stricter bar than the Chinese teaching docs (`SCRIPT.md`/`CLI.md`/`GUI.md`):
+> every fact traces to a **code read** (function names, line numbers, thresholds, byte
+> offsets) or an **actually-run command** (output pasted verbatim) — never a restatement of
+> the teaching docs. It also records each pitfall's root cause and the interface contract
+> with sibling labs / `unpacker/` (who loads whose module, by path).
+
 Each lab's docs are `SCRIPT.md` (script route) + `CLI.md` (command-line route) +
 `GUI.md` (GUI-tool route) — three parallel documents sharing one section skeleton.
+Each lab root also carries **`AGENTS.md`** — an English **agent-facing ground-truth** doc
+(real paths, line numbers, thresholds, byte offsets, and actually-run command output;
+never a restatement of the three teaching docs above).
 
 ---
 
