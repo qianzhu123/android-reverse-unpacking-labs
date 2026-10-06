@@ -171,9 +171,17 @@ Requirements:
        `CLI.md`   — command-line route: byte-level reproduction of every step with
                     generic commands (unzip / aapt2 / xxd / readelf / sha256sum / cmp /
                     apkutil (entropy), etc.).
-       `GUI.md`   — graphical-tool route: jadx / IDA / Ghidra / 010 Editor / GDA / JEB /
-                    binwalk (entropy curve) / apkid — operations and interpretation
-                    at the corresponding steps.
+       `GUI.md`   — graphical-tool route: operations inside a GUI application, plus
+                    interpretation at the corresponding steps. The load-bearing GUI
+                    applications are **jadx-gui** (open APK/dex in its own window and
+                    read the package tree / decompiled code), **IDA / Ghidra** (open the
+                    .so, read Segments/Sections windows and call graphs), **010 Editor**
+                    (open a file via its GUI and apply the ELF template + Templates
+                    results pane). Tools that only exist as a CLI are **not** part of
+                    this route: a `binwalk -E` entropy curve and an `apkid` scan are
+                    commands — put them in `CLI.md`, and have `GUI.md` only *read* the
+                    curve/verdict the reader exported (e.g. open the exported PNG), or
+                    perform the equivalent action inside a GUI binary-forensics app.
      **The three lab documents are written in Chinese** (see the language convention
      at the top of this file); tool output and paths stay as-is.
    - **`AGENTS.md` (English, mandatory).** Each lab root also ships exactly one
@@ -262,20 +270,23 @@ Requirements:
        Repeatable practice: pristine/ + reset_lab.py (status / restore / backup)
        Pitfalls (toolchain / environment / thresholds / false positives / failure boundaries)
    - Route division: **verdicts come from SCRIPT/CLI (quantifiable, criterion-grade);
-     understanding comes from GUI** (jadx yields Java, IDA yields call graphs,
-     binwalk yields entropy curves). The same step shows its own method's version in
-     each document — no cross-copying conclusions. GUI outputs (decompiled code,
-     entropy curves, hex views) are described via key reading points + necessary real
-     excerpts; never leave the reader with a tool and no idea what to look at.
+     understanding comes from GUI** (jadx-gui yields browsable Java, IDA/Ghidra yield
+     call graphs, 010 Editor yields an editable hex view). The same step shows its own
+     method's version in each document — no cross-copying conclusions. GUI outputs
+     (decompiled code, entropy curves, hex views) are described via key reading points +
+     necessary real excerpts; never leave the reader with a tool and no idea what to look at.
    - **Route purity (hard)**: each document runs ONLY its own method's tools.
      CLI.md uses generic commands (unzip / aapt2 / xxd / readelf / sha256sum / cmp /
      apktool...) — invoking `python tools/*.py` inside CLI.md is forbidden (that is
      SCRIPT.md's route; where a number CLI commands cannot produce, CLI.md says so
-     and points to SCRIPT.md instead of borrowing its scripts). GUI.md uses
-     graphical tools (jadx / IDA / 010 Editor / binwalk / apkid...); its steps
-     likewise never invoke `tools/*.py`. SCRIPT.md is the only document
-     that runs this repo's Python tools. Cross-references between documents are
-     fine; cross-execution is not.
+     and points to SCRIPT.md instead of borrowing its scripts). GUI.md drives **GUI
+     applications only** (jadx-gui / IDA / Ghidra / 010 Editor) — its steps never invoke
+     `tools/*.py`, and they must **not** present command-line tool runs either: a
+     `jadx -d <dir>` dump or a `binwalk -E` curve belongs in CLI.md, not GUI.md. Where a
+     GUI.md needs the artefact such a command produces, it says so and points to CLI.md,
+     then describes opening/reading **that artifact inside the GUI app** instead of
+     re-running the command. SCRIPT.md is the only document that runs this repo's Python
+     tools. Cross-references between documents are fine; cross-execution is not.
    - Every chapter states "what to do / what you should see / why" — conclusions alone
      are not acceptable.
    - Command style: complete and copy-pasteable (no `...` placeholders), in code blocks
@@ -425,7 +436,7 @@ Requirements:
 | Project location | A `<project-name>` folder under the repo root (new folder each time); docs say "the lab root" only |
 | Documents | Three parallel teaching docs `SCRIPT.md` (script) + `CLI.md` (CLI) + `GUI.md` (GUI), one shared skeleton, plus `AGENTS.md` (agent ground-truth) |
 | **Language** | **Repo-level files & commits in English; each lab's three docs in Chinese** (teaching material; tool output/paths stay original); **each lab's `AGENTS.md` in English** |
-| Method layering | SCRIPT = this repo's tools/ Python code; CLI = unzip/aapt2/xxd/readelf generic commands; GUI = jadx/IDA/Ghidra/010 Editor/GDA/JEB/binwalk(-E)/apkid |
+| Method layering | SCRIPT = this repo's tools/ Python code; CLI = unzip/aapt2/xxd/readelf generic commands (incl. CLI-only tools like `binwalk -E`, `apkid`, `jadx -d`); GUI = **GUI applications only** (jadx-gui / IDA / Ghidra / 010 Editor) |
 | Topic | Android **packers & unpacking** (UPX/variants/compression shells/memory dump/OEP/ELF Fix/whole-DEX encryption/class extraction) |
 | Out of scope | Code obfuscation / string protection / VMP teaching → separate prompt |
 | Samples | NDK clang from source; packed/unpacked same-source, byte-comparable |
@@ -435,7 +446,7 @@ Requirements:
 | Knowledge-point style | Five-part set: what / how to see / verification means / real output / failure boundary |
 | Reset | `pristine/` backup + `tools/reset_lab.py` (status / restore / backup) |
 | Doc order | Theory → script run → CLI reproduction → GUI understanding; GUI steps reference script output |
-| GUI tool selection (agents pick per step) | Java/resource decompile: jadx; SO reversing/call graphs/xrefs: IDA or Ghidra; hex editing: 010 Editor (or HxD/ImHex); APK structure browsing: GDA or JEB; entropy curve: binwalk -E (`-p` saves PNG); external packer cross-check: apkid; unpack/repack: apktool. GUI commands stay copy-paste complete (jadx -d / binwalk -E -p / apktool d); in-tool steps spell out where to click / what to look at / how to judge |
+| GUI tool selection (agents pick per step) | **GUI apps:** Java/resource decompile: jadx-gui (open the APK/dex in its window; jadx CLI dumps belong in CLI.md); SO reversing/call graphs/xrefs: IDA or Ghidra; hex viewing/editing: 010 Editor (or HxD/ImHex), apply the ELF template for header fields; APK structure browsing: GDA or JEB. GUI steps spell out **where to click / what to look at / how to judge**. **CLI-only tools are NOT GUI route:** `binwalk -E`, `apkid`, `jadx -d`, `apktool d` go in **CLI.md**, not here |
 | Command style | Complete, no ellipsis, in code blocks, with purpose/params/real output/line-by-line reading |
 | Self-explaining commands | Inline comment per command (what / key params) + `# =>` expected output; "what these commands do" paragraph after each block |
 | Paths & tools | Four tiers: CLI arg > env var > build/env.sh (optional) > auto-detect; on total miss, error with guidance |
