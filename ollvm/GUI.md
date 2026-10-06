@@ -1,10 +1,13 @@
-# GUI.md：图形工具路线——JADX 看 Java 层，IDA 分析 SO
+# GUI.md：图形工具路线——jadx-gui 看 Java 层，IDA 分析 SO
+
+> **本路线的工具必须是图形应用**：Java/Dex 反编译用 **jadx-gui**（打开 APK 的图形界面，读包树与反编译视图）；native SO 用 **IDA**（反汇编 / Hex-Rays / 图视图）；十六进制查看可用 **010 Editor**。
+> **命令行工具不属于本路线**：`jadx -d ...`（无界面转储）、`apktool.bat`（解包提取制品）、`llvm-objdump` / `Get-FileHash`（核对）都是命令——它们属命令行/脚本路线（`CLI.md`、`tools/*.ps1`）；`GUI.md` 只**在图形应用里读取/分析**，命令行只用于「准备制品」（如提取 SO）与「核对哈希」，不作为分析方法。
 
 ## 概述
 
-一句话定位：JADX 反编译看 Java 层的明文/密文/`native` 声明，IDA 打开 `libollvmlab.so` 看 JNI 入口、Hex-Rays 伪代码、已验证的地址链和控制流——本路线负责「看懂结构与调用关系」，量化判定（哈希、段大小、密文字节）以 SCRIPT.md / CLI.md 为准。
+一句话定位：jadx-gui 打开 APK 看 Java 层的明文/密文/`native` 声明，IDA 打开 `libollvmlab.so` 看 JNI 入口、Hex-Rays 伪代码、已验证的地址链和控制流——本路线负责「看懂结构与调用关系」，量化判定（哈希、段大小、密文字节）以 SCRIPT.md / CLI.md 为准。
 
-为什么自造样本（建模说明）：同一个 APK 装下 Java 明文、Java XOR、JNI XOR、`nativeOpaque` 四种情况，GUI 路线可以并排展示「同一份逻辑在 JADX 里长什么样、在 IDA 里长什么样」；当前 APK 是普通 NDK 编译 + 源码级 XOR 的基线（未启用 OLLVM pass），IDA 里看到的就是未混淆的对照组。
+为什么自造样本（建模说明）：同一个 APK 装下 Java 明文、Java XOR、JNI XOR、`nativeOpaque` 四种情况，GUI 路线可以并排展示「同一份逻辑在 jadx-gui 里长什么样、在 IDA 里长什么样」；当前 APK 是普通 NDK 编译 + 源码级 XOR 的基线（未启用 OLLVM pass），IDA 里看到的就是未混淆的对照组。
 
 样本事实（与 SCRIPT.md / CLI.md 一致）：
 
@@ -19,16 +22,15 @@
 
 ### 三分钟跑一遍（最小闭环）
 
-```powershell
-cd D:\code\android\reverse\ollvm
-& "$env:USERPROFILE\.local\share\jadx\bin\jadx.bat" `
-  -d .\analysis_output\jadx .\samples\apks\app-debug.apk
-#   ① jadx 反编译：打开 .\analysis_output\jadx\sources\com\example\ollvmlab\MainActivity.java
-#   => 直接看到 PLAIN_SECRET 明文、XOR_BLOB/XOR_KEY=90、native 两个声明
+```text
+① jadx-gui 打开 .\samples\apks\app-debug.apk
+   -> 左侧包树展开 com.example.ollvmlab -> 双击 MainActivity
+   => 右侧反编译视图直接看到 PLAIN_SECRET 明文、XOR_BLOB / XOR_KEY=90、native 两个声明
 ```
 
 ```text
 ② IDA 打开 .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so
+   （该 SO 由命令行 apktool 先行提取，见「环境与工具」）
    -> 等 Auto-analysis -> Exports 里找 Java_..._nativeSecret
    -> 双击进入 -> F5 看伪代码 -> 跟进 sub_24FD4
    => 看到 mov w8, #0x5a / eor / push_back 解码循环，0x14db9 处 24 字节密文
@@ -37,27 +39,28 @@ cd D:\code\android\reverse\ollvm
 ### 工程结构（GUI 路线会用到的路径）
 
 ```text
-analysis_output\jadx\sources\com\example\ollvmlab\MainActivity.java   jadx 反编译 Java
-analysis_output\apktool\lib\arm64-v8a\libollvmlab.so                  IDA 分析对象（arm64 debug）
-analysis_output\apktool\smali_classes2\com\example\ollvmlab\...       smali 原始字节码（jadx 看不懂时兜底）
+analysis_output\apktool\lib\arm64-v8a\libollvmlab.so                  IDA 分析对象（arm64 debug；由命令行 apktool 提取）
+analysis_output\apktool\smali_classes2\com\example\ollvmlab\...       smali 原始字节码（jadx-gui 看不懂时兜底）
 app\src\main\cpp\native-lib.cpp                                   JNI 源码（对照用）
 ```
+
+> jadx-gui 直接打开 `samples\apks\app-debug.apk` 即可，不需要预先转储 `analysis_output\jadx\sources\`；上表保留 apktool 目录仅因 IDA 需要它的 SO 制品。
 
 ## 环境与工具
 
 | 工具 | 状态/位置 |
 | --- | --- |
-| jadx | 已安装：`%USERPROFILE%\.local\share\jadx\bin\jadx.bat`；已入 PATH 时 `analyze-apk.ps1` 自动调用 |
+| jadx-gui | 已安装：`%USERPROFILE%\.local\share\jadx\bin\jadx-gui.bat`（图形界面；同目录另有命令行 `jadx.bat`，属 CLI 路线） |
 | IDA | 本机已装，按 05 篇现状使用（安装位置不做新约定） |
-| apktool | `D:\tools\Security\Reverse\Android\static\apktool\apktool.bat`（提取 SO 用） |
+| apktool | `D:\tools\Security\Reverse\Android\static\apktool\apktool.bat`（**命令行**，仅用于提取 SO 等制品，不作分析方法） |
 | Fernflower/Vineflower、dex2jar | 未安装，可选；复杂 Java 代码对比时用（APK/DEX 转 JAR 需先装 dex2jar） |
 | Android Studio + LLDB | 动态补充时使用，需 debug APK；release unsigned 不适合作为可调试样本 |
 
-jadx 不在 PATH 时 `analyze-apk.ps1` 会跳过反编译（用 `Get-Command jadx` 检测，不扫用户安装目录）；要么把 jadx 的 `bin` 加入 PATH，要么直接用上面的完整命令手动生成。图形工具打开的 SO 必须和 CLI 哈希记录的是同一份——分析前 `Get-FileHash` 对一遍（见 CLI.md 静态分析①）。
+**命令行与图形应用的分工**：jadx-gui 直接打开 APK 即可（无需先转储目录）；apktool.bat、`Get-FileHash`、`llvm-objdump` 这些命令行只用于**准备制品**（提取 SO）与**核对哈希**——分析方法本身在 jadx-gui / IDA。图形工具打开的 SO 必须和 CLI 哈希记录的是同一份——分析前用 `Get-FileHash` 对一遍（见 CLI.md 静态分析①）。
 
 ## 知识点：字符串保护和 OLLVM 的特征边界
 
-JADX 里找到的 `XOR_BLOB`/`XOR_KEY`/循环/`StringBuilder` 是**字符串保护**的特征，不是 OLLVM 特征。两类特征的位置完全不同：
+jadx-gui 里找到的 `XOR_BLOB`/`XOR_KEY`/循环/`StringBuilder` 是**字符串保护**的特征，不是 OLLVM 特征。两类特征的位置完全不同：
 
 | 观察位置 | 字符串保护常见特征 | OLLVM 常见特征 |
 | --- | --- | --- |
@@ -69,7 +72,7 @@ JADX 里找到的 `XOR_BLOB`/`XOR_KEY`/循环/`StringBuilder` 是**字符串保�
 
 没有一个通用的「OLLVM 字符串字段」。OLLVM 是 native 编译阶段的代码变换；只有当 Java/JNI 字符串解码函数也经过 OLLVM 编译时，才可能在同一个解码函数里同时看到两类特征。判断 OLLVM 必须与同 ABI、同优化级别的未混淆 baseline 做差分（矩阵见 SCRIPT.md「对照验证」）。
 
-JADX 侧逐字段判读（`XOR_BLOB` 代码到底是不是保护特征）：
+jadx-gui 侧逐字段判读（`XOR_BLOB` 代码到底是不是保护特征）：
 
 | 字段/语句 | 实际含义 | 是否是保护特征 |
 | --- | --- | --- |
@@ -93,19 +96,13 @@ const/16 0x5a -> xor-int/lit8
 int-to-char -> StringBuilder.append(C)
 ```
 
-IDA 应该分析的是 JNI native 实现和 native 控制流，不替代 JADX 的 Java/Dex 分析。
+IDA 应该分析的是 JNI native 实现和 native 控制流，不替代 jadx-gui 的 Java/Dex 分析。
 
-## 静态分析（JADX 部分）
+## 静态分析（jadx-gui 部分）
 
-### 生成并打开 jadx 输出
+### 用 jadx-gui 打开 APK 读 Java
 
-```powershell
-cd D:\code\android\reverse\ollvm
-& "$env:USERPROFILE\.local\share\jadx\bin\jadx.bat" `
-  -d .\analysis_output\jadx .\samples\apks\app-debug.apk
-```
-
-点哪里/看什么：打开 `analysis_output\jadx\sources\com\example\ollvmlab\MainActivity.java`，应看到三段并列的代码（实跑摘录）：
+点哪里/看什么：jadx-gui `File → Open` 打开 `samples\apks\app-debug.apk`，左侧包树展开 `com.example.ollvmlab` → 双击 `MainActivity`，右侧反编译视图应看到三段并列的代码（实跑摘录）：
 
 ```java
 private static final byte[] XOR_BLOB;
@@ -129,9 +126,9 @@ private native int nativeOpaque(int i);
 - Java XOR：字节数组 + 固定 key + 循环 + `StringBuilder`，沿数据流手工还原出 `JAVA_XOR_SECRET`；
 - JNI 路径：Java 层只有 `native` 声明 + `loadLibrary`，实现必须去 SO 找——这就是切到 IDA 的信号。
 
-大型 APK 的 JADX 搜索策略：字段名可能被 R8/ProGuard 改名，按行为特征搜而不是按名字搜——`System.loadLibrary`、`native `、`RegisterNatives`、`JNI_OnLoad`、`XOR`、`Cipher.getInstance`、`SecretKeySpec`、`Base64`、`StringBuilder`、`byte[]`。混淆工具可以改名，但不能把这些运行时 API 的语义完全消除。找不到 `XOR_BLOB` 时继续搜 `byte[]` 初始化和 `new String(...)`。
+大型 APK 的 jadx-gui 搜索策略：字段名可能被 R8/ProGuard 改名，按行为特征搜而不是按名字搜——`System.loadLibrary`、`native `、`RegisterNatives`、`JNI_OnLoad`、`XOR`、`Cipher.getInstance`、`SecretKeySpec`、`Base64`、`StringBuilder`、`byte[]`（jadx-gui 用 `Ctrl+Shift+F` 全局搜索）。混淆工具可以改名，但不能把这些运行时 API 的语义完全消除。找不到 `XOR_BLOB` 时继续搜 `byte[]` 初始化和 `new String(...)`。
 
-### JADX → SO 的映射表（找「桥」，不只找明文）
+### jadx-gui → SO 的映射表（找「桥」，不只找明文）
 
 ```text
 Java 类/方法
@@ -145,16 +142,21 @@ Java 类/方法
 
 ## 静态分析（IDA 部分）
 
-### 提取正确的 SO
+### 提取正确的 SO（命令行准备制品）
+
+IDA 需要的是 SO 制品，这一步用**命令行 apktool** 提取（属制品准备，不是分析）：
 
 ```powershell
-$apk = (Resolve-Path .\samples\apks\app-debug.apk).Path
-$so = (Resolve-Path .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so).Path
-Get-FileHash $so -Algorithm SHA256
+# 用命令行 apktool 解包 APK，得到的 lib 目录即 IDA 的分析对象
+& 'D:\tools\Security\Reverse\Android\static\apktool\apktool.bat' d -f `
+  .\samples\apks\app-debug.apk -o .\analysis_output\apktool
+
+# 核对哈希：IDA 打开的必须与文档记录的是同一份（Get-FileHash 属核对命令）
+Get-FileHash .\analysis_output\apktool\lib\arm64-v8a\libollvmlab.so -Algorithm SHA256
 #   => 555B4EE785E5040FA1F7CC503FAFDA16B88411C79C242E769BADDCA22BA318C2
 ```
 
-IDA 应打开与设备 ABI 匹配的 ELF（arm64 → AArch64；armeabi-v7a → ARM/Thumb；x86_64 → x86-64；x86 → x86）。直接用 apktool 输出目录里的 SO，不必把整个 APK 导入 IDA。
+IDA 应打开与设备 ABI 匹配的 ELF（arm64 → AArch64；armeabi-v7a → ARM/Thumb；x86_64 → x86-64；x86 → x86）。直接打开 apktool 输出目录里的 SO，不必把整个 APK 导入 IDA。
 
 大型 APK 先按 ABI 和库名排序再决定分析谁（自有命名库 > 业务 JNI/加密/授权库 > 游戏引擎/广告统计 > 纯资源适配库）：
 
@@ -336,7 +338,7 @@ blr x8                    ; 调入 Android Runtime
 
 ### 回到 Java 调用者闭环
 
-JADX 的 `MainActivity`：
+jadx-gui 里 `MainActivity` 的调用：
 
 ```java
 show(output, "JNI_SECRET=" + nativeSecret());
@@ -404,11 +406,11 @@ sub_25138              -> string_data_helper（确认后再改成 c_str/data）
 | --- | --- | --- |
 | `analyze-apk.ps1` | 解包 APK、列出 ABI、导出 smali/库文件 | 不替代 IDA 的 CFG、Xrefs 和类型恢复 |
 | `inspect-native.ps1` | 快速查看 ELF 段、符号、字符串和反汇编片段 | 不替代对 `sub_24fd4`、数据引用和调用约定的人工确认 |
-| JADX | 找 Java 字符串、`native` 声明、`loadLibrary` 和调用者 | 不显示 native `.text` 的真实控制流 |
+| jadx-gui | 找 Java 字符串、`native` 声明、`loadLibrary` 和调用者 | 不显示 native `.text` 的真实控制流 |
 | IDA | 定位函数、跟踪 Xrefs、查看 CFG、重命名和恢复类型 | 不负责 APK 解包和 Java 业务调用链全貌 |
 | Frida/LLDB | 确认运行时参数、返回值和明文边界 | 不替代静态证据和样本哈希记录 |
 
-正确流程：「脚本准备样本 → JADX 找桥 → IDA 证明 native 数据流 → 必要时动态验证」，而不是只看脚本输出或只看 F5 伪代码。
+正确流程：「脚本准备样本 → jadx-gui 找桥 → IDA 证明 native 数据流 → 必要时动态验证」，而不是只看脚本输出或只看 F5 伪代码。
 
 ### JNI 绑定的两种查找方式
 
@@ -451,7 +453,7 @@ Frida hook（脚本见 SCRIPT.md「动态分析」）在 Java native 返回边�
 | 内容 | 是否通用 | 说明 |
 | --- | --- | --- |
 | `Get-FileHash` 固定 APK/SO 哈希 | 通用 | 确认分析对象没有变化 |
-| apktool 解包、jadx 反编译、搜 `loadLibrary/native/RegisterNatives` | 通用 | 适用大多数 APK；split/bundle 先定位 base APK |
+| apktool 解包、jadx-gui 打开 APK 读 Java、搜 `loadLibrary/native/RegisterNatives` | 通用 | 适用大多数 APK；split/bundle 先定位 base APK |
 | 按 ABI 选择 `arm64-v8a`/`armeabi-v7a`/`x86_64`/`x86` | 通用 | 必须与设备和目标 SO 匹配 |
 | IDA 的 ELF Header、Segments、Exports、Imports、Strings、Xrefs、Graph View | 通用 | IDA 版本不同，窗口名称可能略有变化 |
 | 从 JNI 入口追到密文、解码循环、字符串 sink | 通用 | 适用静态命名导出和动态注册（后者入口改为 `JNI_OnLoad/RegisterNatives`） |
@@ -481,10 +483,10 @@ Frida hook（脚本见 SCRIPT.md「动态分析」）在 Java native 返回边�
 
 | 现象 | 处理 |
 | --- | --- |
-| jadx 不在 PATH，脚本跳过反编译 | 用 `%USERPROFILE%\.local\share\jadx\bin\jadx.bat` 完整命令手动生成，或把 bin 加入 PATH |
-| Fernflower 报缺少 dex2jar | APK/DEX 转 JAR 需要 dex2jar；简单 Java 观察直接用 jadx |
+| jadx（命令行）不在 PATH，脚本跳过转储 | 本路线用图形界面 `%USERPROFILE%\.local\share\jadx\bin\jadx-gui.bat`（双击或运行即可，不依赖 PATH）；命令行 `jadx.bat` 属 CLI 路线 |
+| Fernflower 报缺少 dex2jar | APK/DEX 转 JAR 需要 dex2jar；简单 Java 观察直接用 jadx-gui |
 | IDA 打开的 SO 和文档地址对不上 | 先 `Get-FileHash` 对哈希；换 APK/release/ABI 后地址必须重新定位，不能套用 `sub_24FD4`/`0x14db9` |
-| 只打开 SO 看不到 `XOR_BLOB` | 它在 `classes*.dex` 里，不在 SO；Java 层归 JADX 管 |
+| 只打开 SO 看不到 `XOR_BLOB` | 它在 `classes*.dex` 里，不在 SO；Java 层归 jadx-gui 管 |
 | LLDB 断点未命中 | 确认 debug APK、ABI 匹配、模块已加载 |
 
 ### 大型 APK 的最小报告模板
@@ -505,4 +507,4 @@ JNI 绑定方式：命名导出 / RegisterNatives：
 OLLVM 证据：dispatcher / substitution / bogus CFG / 无：
 ```
 
-结论：当前项目分两条线分析——JADX 找到 Java XOR 字段和 JNI 调用关系，IDA 分析 `libollvmlab.so` 中的 JNI 入口、native XOR 解码和 `nativeOpaque` 控制流。`XOR_BLOB`、`XOR_KEY`、循环和 `StringBuilder` 是字符串保护的特征；OLLVM 的特征应在 native `.text` 的 CFG 和指令结构中寻找，而不是在这些 Java 字段名中寻找。
+结论：当前项目分两条线分析——jadx-gui 找到 Java XOR 字段和 JNI 调用关系，IDA 分析 `libollvmlab.so` 中的 JNI 入口、native XOR 解码和 `nativeOpaque` 控制流。`XOR_BLOB`、`XOR_KEY`、循环和 `StringBuilder` 是字符串保护的特征；OLLVM 的特征应在 native `.text` 的 CFG 和指令结构中寻找，而不是在这些 Java 字段名中寻找。
