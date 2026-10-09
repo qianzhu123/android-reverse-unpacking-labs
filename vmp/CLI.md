@@ -63,6 +63,23 @@ mkdir -p analysis_output/cli
 | VN2 分派非中心 | `llvm-objdump -d` 里最大函数有 `blr xN`（间接）或一堆 `br xN`（threaded） |
 | B13 节头剥离 | `llvm-readelf -h` 里 `Number of section headers: 0` |
 
+### 命令行能解释的 VM 原理（对照 `SCRIPT.md`「虚拟机是怎么运转的」）
+
+通用命令看到的「解释器」长这样，逐条对应 VM 的五个概念：
+
+| VM 概念 | 命令看到什么 | 在哪看 |
+|---|---|---|
+| `pc`（取指指针） | `add-int/lit8 vN, vN, #1`（循环里对某个寄存器 +1） | `dexdump -d` 解释器循环头 / `llvm-objdump -d` 的 `add xN,xN,#1` |
+| **取指** | `aget-byte vN, code, pc` → `and vN, #255` | 解释器循环头 |
+| **译码/分派** | `packed-switch` / `sparse-switch` / `invoke Method` / `blr xN` / `br xN` | 解释器中部 |
+| `sp`（栈顶指针） | 反复出现的 `add/sub` 对同一个寄存器 | case 体里 |
+| **栈**（求值栈） | `sget STACK` + `aget/aput STACK` 成对出现 | 每个 case 体 |
+| **opcode 表** | switch 的 `case` 值（就是 opcode 的合法取值） | `packed/sparse-switch-data` |
+| **立即数** | case 体里 `aget-byte vN, code, pc` 之后再 `and #255` | PUSH / LOADARG 的 case 体 |
+
+**一句话**：命令行看到「`aget-byte code[pc]` → `switch` → 一段 `STACK` 操作 → 回循环」
+这四件套，就是一台 VM。**分派从 `switch` 换成 `invoke Method` / `blr xN` / `br xN`，VM 就变难**。
+
 ---
 
 ## 判定：这是虚拟化保护吗（通用命令）
@@ -175,10 +192,16 @@ unzip -o -q samples/apks/app_l4.apk classes.dex -d analysis_output/cli/
 ```
 
 ```bash
-# S2：运行期装配 -> 间接调用；S3：threaded -> 一堆 br xN
-"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s2_arm64.so | grep -c "blr\s*x"
-"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s3_arm64.so | grep -cE "^\s+[0-9a-f]+:\s+[0-9a-f]{8}\s+br\s+x"
-#   => s2 有 blr x8（间接）；s3 有 7 条 br xN（computed-goto）
+# S2：运行期装配 -> 间接调用（blr）；S3：threaded -> 一堆 br xN
+for lv in s1 s2 s3; do
+  f=samples/native/libcalc_${lv}_arm64.so
+  printf "%-3s blr=%s br=%s\n" "$lv" \
+    "$("$NDBIN/llvm-objdump.exe" -d $f | grep -cE '[[:space:]]blr[[:space:]]')" \
+    "$("$NDBIN/llvm-objdump.exe" -d $f | grep -cE '[[:space:]]br[[:space:]]+x')"
+done
+#   => s1  blr=0 br=6     ← 中心比较级联：无间接调用、分支少
+#   => s2  blr=3 br=5     ← 有 3 处间接调用 = 运行期装配的函数表
+#   => s3  blr=0 br=12    ← 12 条 br xN = threaded 块网
 ```
 
 **读法（VN2）**：`blr xN` = 「跳到运行期才算出来的地址」（函数指针表）；连续的 `br xN` =
@@ -188,103 +211,292 @@ unzip -o -q samples/apks/app_l4.apk classes.dex -d analysis_output/cli/
 
 ## 脱壳：手工取字节码、手工还原
 
+> 本路线的**通用流程**（与 `SCRIPT.md` §A 的五步一一对应，只是全用通用命令 + 人眼）：
+> **① 找解释器**（`dexdump -d` / `llvm-objdump -d`，找「大方法 contains switch+loop」或
+> 「大函数 contains 比较级联」）→ **② 找字节码**（`xxd` / `llvm-objdump -s`，找那段紧凑字节）
+> → **③ 反推 opmap**（逐个 case 体看它做了什么运算）→ **④ 解码**（拿纸笔逐条翻译）
+> → **⑤ 验证**（`sha256sum` 钉死文件；语义验证见 `SCRIPT.md` 的 `verify_gen.py`）。
+>
+> 下面 L1 / L2 / S1 给**全部命令 + 真实输出 + 逐行读法**；L3/L4/L5/S2/S3 本路线做不到，如实说明。
+
 ### L1：从 `fill-array-data` 取字节码，对照 switch 手抄 opmap
 
-```bash
-# ① 在解释器里找 byte[] 常量的来源：fill-array-data
-"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | grep -nE "fill-array-data|packed-switch-data" 
-#   => 288: fill-array-data v0, 00000022   ← P_MIX
-#   => 292: fill-array-data v0, 0000002c   ← P_TWIST
-#   => 296: fill-array-data v0, 00000036   ← P_DIGEST
-#   => 437: packed-switch-data (18 units)
+#### ① 找解释器（谁在分派？）
 
-# ② 把 fill-array-data 之后的原始字节 dump 出来（这是 dex 的字节，不是源码）
-xxd -s 0x6b0 -l 48 analysis_output/cli/classes.dex
-#   => 相邻区域能看到 0c 09 0f 01 00 01 01 03 02 11 04  ... （各段前面还有 width/size 头）
+```bash
+# 解出 dex
+unzip -o -q samples/apks/app_l1.apk classes.dex -d analysis_output/cli/
+
+# 看哪个方法含 packed-switch（这就是「解释器」）
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | grep -nE "packed-switch v|packed-switch-data"
+#   => 358: 2b01 8700 0000   |0019: packed-switch v1, 000000a0 // +00000087
+#   => 437: 0001 0700 0100 ...|00a0: packed-switch-data (18 units)
 ```
 
-**读法**：`fill-array-data` 把静态 `byte[]` 从 dex 的数据区拷进数组。**头是
-`u2 ident(0x0300) | u2 element_width | u4 size`**，随后才是数据。手工时先跳过 8 字节头，
-再读 `size × width` 字节 —— 得到的就是 `P_MIX = 01 00 01 01 03 02 11 04 02 03 05 07`。
+**读法**：`packed-switch v1` 说明「用一个寄存器做分派」；`packed-switch-data (18 units)` 是它的
+跳转表。**打它的所在方法**就是解释器 —— 用 `grep -B80` 往上看方法名：
 
 ```bash
-# ③ 抄 switch 映射：packed-switch-data 的 first_key + size 给出 case 集合
-"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | sed -n '350,440p' | grep -E "packed-switch|cmp-|goto|invoke|return"
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk '/name          : .run./{f=1} f' | head -30
+#   => name : 'run'  type : '(I[I)I'  insns size : 178
+#   => 00053e: d803 0101 |0013: add-int/lit8 v3, v1, #1     ← pc++
+#   => 000542: 4801 0701 |0015: aget-byte v1, v7, v1        ← op = code[pc]
+#   => 000546: d511 ff00 |0017: and-int/lit16 v1, v1, #255  ← op &= 0xFF
+#   => 00054a: 2b01 8700 0000 |0019: packed-switch v1, ...  ← 分派
 ```
 
-**读法**：逐个 `case` 体能看出语义 ——
-`case 0x01` 里是「读 args 的一个元素入栈」= **LOADARG**；
-`case 0x02` 里是「把下一字节当立即数入栈」= **PUSH**；
-`case 0x03` 里是 `xor-int` = **XOR**；`0x04`=`add-int`；`0x05`=`mul-int`；`0x06`=`sub-int`；
-`case 0x07` 是 `return` = **RET**。
+**读法**：`aget-byte code[pc]` = **取指**，`packed-switch` = **译码** —— 循环体的骨架就这三条。
+
+#### ② 找字节码（业务方法体 + `fill-array-data`）
 
 ```bash
-# ④ 用还原出的 opmap，手工解码字节码
+# 先看业务方法体是不是塌缩了（V1 证据）
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk '/name          : .mix./{f=1} f' | head -14
+#   => 000488: 1200            |0000: const/4 v0, #int 0
+#   => 00048a: 2420 1000 2100  |0001: filled-new-array {v1, v2}, [I
+#   => 000492: 7120 1000 1000  |0005: invoke-static {v0, v1}, Lcom/demo/calc/Core;.run:(I[I)I
+#   => 00049a: 0f01            |0009: return v1
+```
+
+```bash
+# 找 byte[] 常量的来源
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | grep -nE "fill-array-data|array-data"
+#   => 288: 2600 1e00 0000  |0004: fill-array-data v0, 00000022
+#   => ... 0006d0: 0003 0100 0c00 0000 0100 0101 0302 ... |0022: array-data (10 units)
+
+# 直接 dump 那段原始字节（含 8 字节头）
+xxd -s 0x6d0 -l 20 analysis_output/cli/classes.dex
+#   => 000006d0: 0003 0100 0c00 0000 0100 0101 0302 1104
+#               └ident┘└w=1┘└──size=12──┘└─── 数据开头 ───
+```
+
+**读法**：`fill-array-data` 的头是 `u2 ident(0x0300) | u2 element_width | u4 size`（共 8 字节）；
+**跳过 8 字节头**，再读 `size × width` 字节，就得到 `P_MIX = 01 00 01 01 03 02 11 04 02 03 05 07`。
+
+#### ③ 反推 opmap（逐个 case 体读语义）—— 本档最核心的一步
+
+```bash
+# ① 先看跳转表本身：ident + size + first_key + targets[]
+xxd -s 0x658 -l 40 analysis_output/cli/classes.dex
+#   => 0001 0700 0100 0000 7300 0000 6400 0000 4e00 0000 3800 0000 2200 0000 0b00 0000 0400 0000 0100 0000
+#      └ident┘ size=7 └first_key=1──┘ └t0=0x73┘ └t1=0x64┘ ...
+#      targets 是「相对 packed-switch 指令」的偏移，所以 case1 体 = 0x19(switch) + 0x73 = 0x8c 处…
+
+# ② 看每个 case 体做什么（下面截取几个关键 case；完整见 §③ 表）
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk '/name          : .run./{f=1} f' | sed -n '20,70p'
+```
+
+**读法（关键！opmap 是「读」出来的，不是猜的）** —— 对照上面的输出：
+
+| opcode | case 体的决定性指令 | 语义 |
+|---|---|---|
+| `0x07` | `sget STACK; sub v2,#-1; aget v7,STACK,v2; return v7` | **RET**（弹栈顶返回） |
+| `0x01` | `aget-byte v3,code,v3; and v3,#255; aget v3,args,v3; aput v3,STACK,v2` | **LOADARG**（读 code[pc] 再当 args 的下标） |
+| `0x02` | `aget-byte v3,code,v3; and v3,#255; aput v3,STACK,v2`（**少一句 aget args**） | **PUSH**（读 code[pc] 直接入栈） |
+| `0x06` | `... sub-int/2addr v4, v1` | **SUB** |
+| `0x05` | `... mul-int/2addr v4, v1` | **MUL** |
+| `0x04` | `... add-int/2addr v4, v1` | **ADD** |
+| `0x03` | `... xor-int/2addr v1, v4` | **XOR** |
+
+> **LOADARG 与 PUSH 就靠一句 `aget v3, args, v3` 分开** —— 有它=取参数，没它=取立即数。
+> 这是本档最容易读错的地方。
+
+#### ④ 解码 + ⑤ 验证
+
+```bash
+# 用还原出的 opmap 逐字节解码（拿纸笔 / 记事本）
 #   01 00 = LOADARG 0 ; 01 01 = LOADARG 1 ; 03 = XOR ; 02 11 = PUSH 0x11 ;
 #   04 = ADD ; 02 03 = PUSH 3 ; 05 = MUL ; 07 = RET
-#   => ((a ^ b) + 0x11) * 3
+#   => ((a ^ b) + 0x11) * 3   ✓ 与黄金 CalcLogic.mix 一致
 ```
 
 **这就是 P_MIX 的语义**。用同样办法解 `P_TWIST`（`01 00 02 07 05 02 05 06 07` →
-`(a*7)-5`）与 `P_DIGEST`。
+`(a*7)-5`）与 `P_DIGEST`（`01 00 01 01 05 01 00 01 01 04 03 02 5a 04 07` →
+`((a*b)^(a+b))+0x5A`）。
+
+```bash
+# ⑤ 验证：钉死文件 + 语义
+sha256sum samples/dex/level_L1.dex
+#   => e9169ea3...   （记录：我讨论的就是这一份）
+# 语义等价验证需要参考解释器 —— 见 SCRIPT.md 的 python tools/verify_gen.py
+```
 
 ### L2：先解密 assets 载荷，再按 L1 的方法解
 
 ```bash
-# ① 取载荷并看它是不是密文
+# ① 找载体：assets 里那个「既小又不是文本」的条目
+unzip -l samples/apks/app_l2.apk
+#   => assets/core_a.dat   39
 unzip -o -q samples/apks/app_l2.apk assets/core_a.dat -d analysis_output/cli/
-xxd analysis_output/cli/assets/core_a.dat | head -3
+xxd analysis_output/cli/assets/core_a.dat | head -2
 #   => d56a cce5 6c0a 42fb 816c 6cee cad0 49f9 ...
 #   => d961 c4e1 6e0e 45ff ...
 ```
 
 ```bash
-# ② 在 dex 里找那把 16 字节 key（它是 Core 的一个静态 byte[] 常量）
-"$BT/dexdump.exe" -d analysis_output/cli/classes.dex 2>/dev/null | grep -A2 "KEY" | head
-#   （或直接从源码 build/gen/level_L2/com/demo/calc/Core.java 里看到 KEY 数组）
+# ② 找解密点：Core 里有一个 load() 方法（读 assets -> XOR -> 返回），再加一个静态 KEY 字段
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | grep -nE "name          : '(load|KEY|RES)'"
+#   => 268: name : 'KEY'    （静态 byte[]，就是那把密钥）
+#   => 273: name : 'RES'    （字符串字面量 "core_a.dat" —— **注意：看它读哪个资源，不是靠名字判据**）
+#   => 345: name : 'load'   （读 + 解密的那段）
+# 想看 load 的解密循环：把它的字节码 dump 出来，找 `aget-byte` + `xor-int` + `aput`
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk '/name          : .load./{f=1} f' | grep -E "xor-int|aget-byte|aput-byte|and-int" | head
+# 或直接看源码生成件 build/gen/level_L2/com/demo/calc/Core.java：
+#     private static final byte[] KEY = {-39,99,-61,-28,108,11,67,-8,-125,125,104,-20,-55,-43,78,-8};
+#                                            └ d9   63   c3   e4  6c  0b  43  f8   83  7d  68  ec  c9  d5  4e  f8 ┘
 ```
 
 ```bash
-# ③ 手工 XOR：第一个字节 d5 ^ d9 = 0x0c = 12 —— 正好是 P_MIX 的长度
-python -c "print(0xd5 ^ 0xd9)"     # （这里只是算一个数，不是调用本 lab 的脚本）
-#   => 12
+# ③ 解密（逐字节 XOR，key 长 16 字节）—— 密钥十六进制 d9 63 c3 e4 6c 0b 43 f8 83 7d 68 ec c9 d5 4e f8
+python -c "
+enc=bytes.fromhex('d56acce56c0a42fb816c6ceecad049f9d961c4e16e0e45ff827d69edccd44ef9d867c0e6360f44')
+key=bytes.fromhex('d963c3e46c0b43f8837d68ecc9d54ef8')
+print(bytes(b^key[i%len(key)] for i,b in enumerate(enc)).hex(' '))
+"
+#   => 0c 09 0f 01 00 01 01 03 02 11 04 02 03 05 07 01 00 02 07 05 02 05 06 07 01 00 01 01 05 01 00 01 01 04 03 02 5a 04 07
+#      └len┘ └────── P_MIX（12B）──────┘ └── P_TWIST（9B）──┘ └────────── P_DIGEST（15B）──────────┘
 ```
 
-**读法**：解出来的明文是 `[len_mix, len_twist, len_digest] + 三段字节码`。得到字节码后，
-按 L1 的方法解 —— 用 `xxd` 看不到语义，语义靠解释器的 case 体。
+**读法**：明文前 3 字节 `0c 09 0f` = `12, 9, 15` = 三段字节码长度；之后 `01 00 01 01 03 02 11 04 02 03 05 07`
+**与 L1 的 `P_MIX` 逐字节相同** —— 证明「同一份业务、同一套 opcode 表，只换了载体」。
+得到字节码后，按 L1 的 opmap 解码即可。（注意 key 是 **16 字节**，别只取前 8 字节 —— 那样
+解出来是乱的。）
+
+> **本档的教学点**：L1→L2 的差别**只在第 ② 步**（找载体 + 解密）。分派形态（①③④）没变。
+
+### L3：无 switch，反射分派（本路线读不出 opmap）
+
+```bash
+unzip -o -q samples/apks/app_l3.apk classes.dex -d analysis_output/cli/
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | grep -nE "packed-switch|sparse-switch"
+#   => （无输出 —— 真的没有 switch）
+
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk '/name          : .run./{f=1} f' | sed -n '10,30p'
+#   => sget-object v5, Core;.HM:[Ljava/lang/reflect/Method;   ← handler 表
+#   => sget-object v6, Core;.DISPATCH:[I                       ← opcode→槽位 表
+#   => aget v4, v6, v4                                         ← slot = DISPATCH[op]
+#   => aget-object v4, v5, v4                                  ← m = HM[slot]
+#   => invoke-virtual {v4, v6, v5}, Method;.invoke(...)         ← 反射调用
+```
+
+**读法**：分派是「表查两次 + 反射调用」。**没有一个 switch 可以把 case 体切出来** ——
+opmap 藏在 `DISPATCH` 的**运行期填充**与 `h0..h6` 小方法里，通用命令读不出来。→ 转动态。
+
+### L4：融合算子 + 随机 opcode（本路线只能读形态）
+
+```bash
+unzip -o -q samples/apks/app_l4.apk classes.dex -d analysis_output/cli/
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | grep -nE "sparse-switch" | head -2
+#   => ... sparse-switch v1 ...     ← 用 sparse（case 值不连续）
+#   跳转表里 case 值形如 0x22 0x3E 0x57 ... —— 大且不连续
+```
+
+**读法**：`sparse-switch` 说明 opcode 随机；再看某个 case 体里是 `add-int/lit16 v8, v8, #0x11`
+这类**带内联立即数**的算术 —— 立即数编在指令里，**字节码里没有独立字节**，通用命令拆不开。→ 转动态。
+
+### L5：内联 VM（本路线可人工解，但逐个方法做）
+
+```bash
+unzip -o -q samples/apks/app_l5.apk classes.dex -d analysis_output/cli/
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | grep -nE "Class descriptor|packed-switch"
+#   => 'Lcom/demo/calc/CalcActivity;' / 'Lcom/demo/calc/CalcLogic;'   ← 没有 Core 类
+#   => 三个方法（mix/twist/digest）各自含一个 packed-switch
+```
+
+**读法**：没有 `Core`，但 `mix/twist/digest` **每个方法体内都有一份相同的 switch**（case 值
+都是 `1..7`）。对**每一个**方法重复 L1 的第 ③④ 步即可（opmap 是同一套）。本路线能做，只是
+要手工做三遍。
 
 ### S1：从 `.rodata` 取字节码，对照比较级联手抄 opmap
 
+#### ① 找解释器 + ② 找字节码
+
 ```bash
-# ① 取 .rodata（上面已 dump）：01 00 01 01 03 02 11 04 02 03 05 ff ...
-# ② 看比较级联（上面已 dump）：subs w8,w8,#0x1 -> b.eq 0x1980 ; #0x2 -> 0x19d0 ; ...
-# ③ 逐个 case 体看它做了什么数据运算
-"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s1_arm64.so --start-address=0x1980 --stop-address=0x19d0
-#   => 里面对 w8/w9 做 eor / add / mul / sub ... 对应 XOR / ADD / MUL / SUB
+# ① 找最大函数 + 它的比较级联
+"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s1_arm64.so | grep -E "subs\s+w8, w8, #0x|b.eq" | head -8
+#   => subs w8, w8, #0x1    b.eq 0x1980 <vmr+0xc0>
+#   => subs w8, w8, #0x2    b.eq 0x19d0 <vmr+0x110>
+#   => subs w8, w8, #0x3    b.eq 0x1a14 <vmr+0x154>
+#   => ...
+
+# ② 找字节码：.rodata 只有 36 字节
+"$NDBIN/llvm-readelf.exe" -S samples/native/libcalc_s1_arm64.so | grep -E "Name|rodata"
+#   => [ 9] .rodata  PROGBITS  ... 000024 ...   ← 0x24 = 36 字节
+"$NDBIN/llvm-objdump.exe" -s -j .rodata samples/native/libcalc_s1_arm64.so
+#   => 0548 01000101 03021104 020305ff 01000207  ...
+#   => 0568 025a04ff
 ```
 
-**读法**：`case 0x1` 体里有 `ldrb`（读一字节）+ 带缩放的 `ldr`（按它索引 args）→ **LOADARG**；
-`case 0x2` 只有 `ldrb` → **PUSH**；`case 0x3` 有 `eor` → **XOR**；`#0x4` 有 `add` → **ADD**；
-`#0x5` 有 `mul` → **MUL**；`#0x6` 有 `sub` → **SUB**；`#0xff` 从栈数组弹元素 → **RET**。
+#### ③ 反推 opmap（看 case 体的「数据运算」）—— 与 DEX 侧同样重要的一步
 
 ```bash
-# ④ 用该表解码 .rodata 字节码（与 L1 同样的流程）
+# 看 LOADARG case（0x1980）与 XOR case（0x1a14）
+"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s1_arm64.so --start-address=0x1980 --stop-address=0x19d0 | tail -14
+#   => ldrb  w9, [x9, x10]          ← 读 code[pc]
+#   => ldr   w8, [x8, w9, lsl #2]   ← 按它索引 args（带缩放）→ LOADARG
+"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s1_arm64.so --start-address=0x1a14 --stop-address=0x1a84 | tail -14
+#   => eor   w8, w8, w9             ← 两个 w 寄存器运算 = XOR
+#   => add   x9, x9, #0x14          ← 带立即数 = 指针簿记（**不是** VM 运算，必须排除！）
+#   => b     0x1c00                 ← 回循环尾 = case 体结束
+```
+
+**读法（关键陷阱！）**：每个 case 体里都有 `add x9,x9,#0x14`（那是 `&stack[sp++]` 的地址计算），
+**如果不区分就会被误判成 ADD**。正确规则：
+
+```text
+add/sub/mul/eor wA, wA, wB     ← 两个 **w 寄存器** = 数据运算（ADD/SUB/MUL/XOR）
+add        xA, xA, #imm        ← 带立即数 = 指针/下标簿记，跳过
+ldrb       wA, [..]            ← 读一字节
+ldrb + ldr wA,[.., lsl #2]     ← 读字节再按它索引 = LOADARG
+只有 ldrb                      ← = PUSH
+带缩放的 ldr，无 ldrb           ← 从栈数组弹元素 = RET
+```
+
+| opcode | case 体决定性指令 | 语义 |
+|---|---|---|
+| `0x1` | `ldrb` + `ldr ...,lsl #2`（索引 args） | **LOADARG** |
+| `0x2` | 只有 `ldrb` | **PUSH** |
+| `0x3` | `eor w8,w8,w9` | **XOR** |
+| `0x4` | `add w8,w8,w9` | **ADD** |
+| `0x5` | `mul w8,w8,w9` | **MUL** |
+| `0x6` | `sub w8,w8,w9` | **SUB** |
+| `0xff` | 带缩放的 `ldr`，无 `ldrb` | **RET** |
+
+#### ④ 解码 + ⑤ 验证
+
+```bash
+# 用该表解码 .rodata 的 36 字节
 #   01 00 = LOADARG 0 ; 01 01 = LOADARG 1 ; 03 = XOR ; 02 11 = PUSH 0x11 ;
 #   04 = ADD ; 02 03 = PUSH 3 ; 05 = MUL ; ff = RET
-#   => ((a ^ b) + 0x11) * 3
+#   => ((a ^ b) + 0x11) * 3   ✓ 与黄金一致
+sha256sum samples/native/libcalc_s1_arm64.so
+#   => 2ad21875...   （钉死文件）
 ```
 
-### L3 / S2 / S3：本文件**做不到**，如实说明
+> **注意 `RET` 的 opcode：SO 是 `0xFF`，DEX 是 `0x07`** —— 两套 VM 各自的约定。
 
-L3 没有 `switch`（用反射 `Method[]` invoke），S2/S3 的分派在运行期才装配 ——
-**通用命令只能定位到解释器，拿不到 opcode→handler 的映射**。要还原必须：
+### S2 / S3：本文件**做不到**，如实说明
 
-- 看 `SCRIPT.md` 的 `devirt_dex.py` / `devirt_so.py`（静态能解的部分它解）；
-- 或走动态路线（`frida/trace_dispatch.js` / `so_vm_trace.js`），把运行期的分派目标 trace 出来。
+```bash
+# S2：分派是间接调用（blr xN）—— 目标地址运行期才确定
+"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s2_arm64.so | grep -nE '[[:space:]]blr[[:space:]]'
+#   =>  1988: blr x8   /   1b30: blr x8   /   1cd8: blr x8     ← 三处间接调用
+
+# S3：threaded 分派（computed-goto）—— 一堆 br xN 互相跳
+"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s3_arm64.so | grep -cE '[[:space:]]br[[:space:]]+x'
+#   => 12
+```
+
+**读法**：S2 的 handler 表在**运行期装配**、S3 的 handler 之间**直接互跳**（没有中心函数）——
+通用命令只能定位形态，**拿不到 opcode→handler 映射**。要还原必须：
+
+- 看 `SCRIPT.md` 的 `devirt_so.py`（静态能解的部分它解）；
+- 或走动态路线（`frida/so_vm_trace.js`），把运行期的分派目标 trace 出来。
 
 这是本 lab 刻意保留的**诚实边界**，不是文档偷懒。
 
 ---
+
 
 ## 验证（通用命令）
 

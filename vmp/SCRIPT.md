@@ -124,20 +124,95 @@ vmp/
 | handler 粒度 | 一条 opcode 顶几条逻辑指令 | 基础指令（一对一）/ 融合算子（一对多） |
 | 一致性 oracle | 怎么证明还原对了 | 规范操作流回放 == 黄金答案（本 lab 用这个） |
 
+### 虚拟机是怎么运转的（VM 原理，本 lab 的 VM 就是一个栈式解释器）
+
+**虚拟机 = 一段能执行「自定义指令」的程序**。它有三个数据结构、一个循环：
+
+```text
+VM 状态：  pc（取指指针）  sp（栈顶指针）  stack[64]（求值栈）  args（业务入参）
+主循环：   while pc < code.length:
+               op = code[pc++]          # 取指：读一个字节，就是「opcode」
+               switch op:               # 译码 + 执行：跳到对应 handler
+                   case 0x01:  stack[sp++] = args[code[pc++]]   # LOADARG：把第 k 个参数入栈
+                   case 0x02:  stack[sp++] = code[pc++]         # PUSH：把立即数入栈
+                   case 0x03:  { b=pop; a=pop; push(a ^ b) }    # XOR
+                   case 0x04:  ... ADD / 0x05 MUL / 0x06 SUB ...
+                   case 0xFF:  return pop                      # RET：返回栈顶
+```
+
+**指令集就是「一份约定」**：每个字节值对应一个动作。本 lab 的 VM 指令集（`tools/vmlang.py:BASE_OPS`）：
+
+| opcode 名 | 动作 | 栈效果（`…` 表示栈上原有内容） |
+|---|---|---|
+| `LOADARG k` | 把第 k 个入参入栈 | `…` → `…, args[k]` |
+| `PUSH v` | 把立即数 v 入栈 | `…` → `…, v` |
+| `XOR` / `ADD` / `MUL` / `SUB` | 弹两个、算、压回（顺序：`a op b`，先弹的是 b） | `…, a, b` → `…, a op b` |
+| `RET` | 返回栈顶 | `…, x` → 返回 x |
+
+**「虚拟化保护」为什么能保护**：这段自定义字节码**不是一个能直接执行的东西** —— dalvik/ARM
+里没有这些 opcode。要还原业务逻辑，必须先知道：
+
+1. **哪段字节是字节码**（载体，可能被外置/加密）；
+2. **每个 opcode 字节代表什么动作**（opcode 表 —— 可以随机化、运行期才装配）；
+3. **分派怎么走**（switch / 反射 / 函数指针表 / threaded —— 决定能不能静态读取）。
+
+这三件事里任何一件被藏住，静态分析就难。本 lab 的 L1→L5 / S1→S3 就是**逐条把这三件事逐级
+藏起来**（见下）。
+
+**「虚拟化」相对「加壳/加密」的本质区别**：加密是「把数据锁起来，解开就是原文」；虚拟化是
+「把指令**换了一套机器**」—— 解开之后拿到的不是原指令，而是一段**别家的字节码**，必须再
+理解那台虚拟机的指令集。所以解 VMP 的核心动作是**把解释器读懂 → 反推 opcode 表 → 再解码
+字节码**（本 lab 的 `devirt_*` 工具就干这个）。这也是为什么 VMP 的静态判定**不看字符串**：
+真正的线索是「解释器在不在、字节码在不在、分派是不是中心化的」。
+
+### VMP 对抗技术的分类学 **[知识框架 + 部分可验证]**
+
+真实保护器在这三件事上做文章，本 lab 逐项对应实现了一档：
+
+| 对抗手段 | 藏住的是 | 真实保护器怎么做 | 本 lab 对应档 |
+|---|---|---|---|
+| 字节码外置 + 加密 | ① 载体 | 载荷放 assets/资源，运行期解密 | **L2**（assets + XOR）/ 真货常用自定义加密 |
+| 分派去中心化 | ③ 分派 | 反射 / 函数指针表 / 计算跳转 | **L3**（反射 `Method[]`）/ **S2**（运行期装配函数表） |
+| opcode 随机化 | ② opcode 表 | 每次加固换一套 opcode 映射（官方明说「可随机」） | **L4**（随机不连续 opcode） |
+| 指令融合（超算子） | ② + 粒度 | 一条 handler 顶多条逻辑指令，抬高语义分析成本 | **L4**（`ADDK/MULK/…`） |
+| 内联（去掉 hub） | 解释器形状 | 分派内联进每个方法，破坏「汇聚」特征 | **L5** |
+| threaded / computed-goto | ③ 分派 | handler 之间直接互相跳，没有中心 switch | **S3** |
+| 多层 VM（VM 套 VM） | —— | 解释器自身也被虚拟化；官方称「双层 VMP」 | 未实现（列入认知边界） |
+| 混淆/垃圾指令 / 花指令 | 分析成本 | 塞无效 handler、假分派、不透明谓词 | 未实现（属 `ollvm` 主题） |
+
+> **诚实边界**：本 lab 只做了「形态」的阶梯；真实保护器还会叠加**反调试、完整性校验、
+> 环境检测、多层嵌套**。这些**不在本 lab 覆盖范围**（本 lab 无设备依赖），但它们**不影响
+> 本 lab 的方法论**：无论外面套多少层，解 VMP 的内核始终是「读解释器 → 反推 opcode →
+> 解码字节码」这三步。
+
 ### 各档位 **[可验证]**
 
-| 档 | 核心难点 | 静态能解决吗 |
-|---|---|---|
-| L1 | 抄 switch 分支即可解 | ✅ 完全（`devirt_dex.py` 全还原） |
-| L2 | 先找到并解密外置载荷 | ✅ 完全（载荷 → opmap → 反汇编） |
-| L3 | 没有 switch，靠反射分派 | ❌ opcode 映射要**动态 trace** |
-| L4 | 融合算子 + 随机 opcode | ❌ 静态只能部分（映射能恢复，融合算子的立即数拆不开） |
-| L5 | 无 hub，形状判据失效 | ✅ 完全（靠 V5 找到内联解释器，再按 L1 方法解） |
-| S1 | native 中心分派 | ✅ 完全（比较级联符号化模拟） |
-| S2 | native 运行期装配分派 | ❌ 需动态 trace |
-| S3 | native threaded 分派 | ❌ 需动态 trace |
+| 档 | 核心难点 | 藏住了什么 | 静态能解决吗 |
+|---|---|---|---|
+| L1 | 抄 switch 分支即可解 | 什么都没藏（教学基线） | ✅ 完全（`devirt_dex.py` 全还原） |
+| L2 | 先找到并解密外置载荷 | ① 载体 | ✅ 完全（载荷 → opmap → 反汇编） |
+| L3 | 没有 switch，靠反射分派 | ③ 分派 | ❌ opcode 映射要**动态 trace** |
+| L4 | 融合算子 + 随机 opcode | ② opcode 表 + 粒度 | ❌ 静态只能部分（映射能恢复，融合算子的立即数拆不开） |
+| L5 | 无 hub，形状判据失效 | 解释器形状 | ✅ 完全（靠 V5 找到内联解释器，再按 L1 方法解） |
+| S1 | native 中心分派 | ——（native 侧基线） | ✅ 完全（比较级联符号化模拟） |
+| S2 | native 运行期装配分派 | ③ 分派 | ❌ 需动态 trace |
+| S3 | native threaded 分派 | ③ 分派 | ❌ 需动态 trace |
+
+**逐档的完整解壳演示见「脱壳」章**（`devirt_dex.py` / `devirt_so.py` 的实跑输出 + 逐行读法）。
+
+### 判据为什么必须落在结构上（而不是名字/字符串）
+
+- **类名、方法名、资源名一行配置就能改**：真实保护器普遍把 `ProxyApplication`→乱码、
+  `Vmp.run`→`a.b.c`，字符串判据一改就全灭。本 lab 的样本**故意**把包名/类名全部中性化
+  （`com.demo.calc`/`Core`/`core_a.dat`），就是为了逼着判据只看结构。
+- **结构改不了**：只要它还是个虚拟机，就必然有「一个分派循环 + 一段自定义字节码 + 一批
+  handler」。`switch` 可以被换成反射/函数表，但「方法体塌缩为调解释器」这件事藏不掉
+  （L5 那种「内联」也只是把 hub 打散成多个小解释器，仍然能被 V5 抓到）。
+- **可量化**：方法体大小（code unit 数）、调用者个数、case 集合形态、段体积、分派指令
+  种类 —— 都是能从字节里数出来的数，能写进阈值、能做双向回归。
 
 ### DEX VMP vs SO VMP vs Java2CPP **[知识框架]**
+
 
 - **DEX VMP**：解释器在 dex 里（Java 字节码）。判据 V1/V4/V5/V6。
 - **SO VMP**：解释器在 `.so` 里（native）。判据 VN1/VN2 —— 静态只能判「形态」，
@@ -257,16 +332,54 @@ boundary (static cannot decide):
 
 ## 脱壳（去虚拟化）
 
-### DEX 层：`devirt_dex.py`
+> **本章是核心。** 下面按「先给通用方法论 → 再逐档实证」组织：
+> §A 讲**去虚拟化的五步通用流程**（任何 VM 都适用）；
+> §B 起逐档给出**完整解壳演示**（真实工具输出 + 逐行读法 + 手工复现）。
+> 想直接抄命令：见本章末尾「速查」与 `CLI.md`。
+>
+> **贯穿全章的一条铁律**：解完必须**验证**。本 lab 用「还原出的操作流跑测试向量 == 黄金
+> 答案」当 oracle（`golden_ops.json`）。**没有验证的还原只是猜测**。
+
+### §A 去虚拟化的五步通用流程（先建立方法论）
+
+不管目标是什么形态，解一个 VM 都是这五步（`devirt_dex.py` / `devirt_so.py` 就是它的自动化）：
+
+| 步 | 做什么 | 关键问题 | 本 lab 的判据/工具 |
+|---|---|---|---|
+| **① 定位解释器** | 在样本里找出「那个大循环」 | 哪个方法/函数是「取指-译码-执行」？ | V4（DEX 含 switch+回边）/ VN2（SO 分派形态） |
+| **② 找字节码** | 找出「那段自定义字节码」 | 它在源码数组 / assets / `.rodata`？加没加密？ | V3（外置载荷）/ `xxd`、`llvm-objdump -s` |
+| **③ 反推 opcode 表** | 确定「每个 opcode 字节 = 什么动作」 | switch 的每个 case 体干了什么？ | `dexscan.fingerprint` / SO 比较级联模拟 |
+| **④ 解码字节码** | 用③的表把字节码翻译成操作流 | 每条指令的语义 + 立即数怎么取 | `vmlang.disassemble` |
+| **⑤ 验证** | 证明还原对了 | 跑测试向量 == 黄金答案？ | `vmlang.interpret` vs `golden_ops.json` |
+
+**每一步「卡住」意味着什么**（这就是各档难度的来源）：
+
+- ① 卡住 → 分派被去中心化（L3 反射 / S2 运行期装配 / S3 threaded）→ 转动态 trace；
+- ② 卡住 → 载体被外置+加密（L2）→ 找解密点（静态找 key，或动态 hook 解密函数）；
+- ③ 卡住 → opcode 随机化 / 融合算子（L4）→ 静态只能认「算术种类」，立即数要动态；
+- ④ 卡住 → 字节码里出现了③没覆盖的 opcode → 该 opcode 的 handler 没被识别，回头补③；
+- ⑤ 失败 → 前四步有错（最常见是 ③ 认错 handler，比如把「指针簿记」当成了数据运算）。
+
+**手工版对照**（不跑脚本时）：① 用 jadx-gui/IDA 看方法形状；② 用 010 Editor / `xxd` 读字节；
+③ 用 `dexdump -d` / `llvm-objdump -d` 看 case 体做什么；④ 拿纸笔（或记事本）逐条翻译；
+⑤ 把你的翻译与样本在设备上的行为对（logcat / `frida/oracle_run.js`）。**`CLI.md` 是这条路线的
+完整手工脚本，`GUI.md` 是它的图形版。**
+
+---
+
+### §B L1 · 最简：规则 switch + 字节码在源码（完整演示）
 
 ```bash
-# L1：字节码在源码里 + 规则 switch —— 全自动还原
+# 一步到位（脚本路线）
 python tools/devirt_dex.py samples/apks/app_l1.apk
+#   => note: opmap recovered from switch in Lcom/demo/calc/Core;->run
 #   => recovered opmap (7 entries): 1=LOADARG, 2=PUSH, 3=XOR, 4=ADD, 5=MUL, 6=SUB, 7=RET
 #   => prog0  12 bytes ->  8 ops  => semantics == golden mix
 #            LOADARG:0 LOADARG:1 XOR PUSH:17 ADD PUSH:3 MUL RET
 #   => prog1   9 bytes ->  6 ops  => semantics == golden twist
+#            LOADARG:0 PUSH:7 MUL PUSH:5 SUB RET
 #   => prog2  15 bytes -> 10 ops  => semantics == golden digest
+#            LOADARG:0 LOADARG:1 MUL LOADARG:0 LOADARG:1 ADD XOR PUSH:90 ADD RET
 ```
 
 **它做的四步**（全部只读结构）：
@@ -278,66 +391,353 @@ python tools/devirt_dex.py samples/apks/app_l1.apk
    作 key **解密 assets**；
 4. **反汇编 + 验证**：用还原出的 opmap 反汇编字节码，用测试向量跑一遍，比对黄金答案。
 
+#### 手工复现（关键：opcode 表是从 case 体**读出来**的，不是猜的）
+
+**第 ① 步：看业务方法体塌缩**（`dexdump -d`，完整输出见 `CLI.md`）——
+
+```text
+    #4   name : 'mix'    type : '(II)I'   insns size : 10 16-bit code units
+000488: 1200        |0000: const/4 v0, #int 0
+00048a: 2420 1000 2100 |0001: filled-new-array {v1, v2}, [I
+000490: 0c01        |0004: move-result-object v1
+000492: 7120 1000 1000 |0005: invoke-static {v0, v1}, Lcom/demo/calc/Core;.run:(I[I)I
+000498: 0a01        |0008: move-result v1
+00049a: 0f01        |0009: return v1
+```
+
+**读**：`mix` 整个方法体就 6 条指令 —— 建数组 `{a,b}`、调 `Core.run(0, 数组)`、返回。
+**业务逻辑一条都没有**。这是 V1 的直接证据。
+
+**第 ②③ 步：看解释器怎么把 opcode 映射到动作** —— `Core.run` 里：
+
+```text
+00053e: d803 0101   |0013: add-int/lit8 v3, v1, #1     ← pc++
+000542: 4801 0701   |0015: aget-byte v1, v7, v1        ← 取指：op = code[pc]
+000546: d511 ff00   |0017: and-int/lit16 v1, v1, #255  ← op &= 0xFF（无符号化）
+00054a: 2b01 8700 0000 |0019: packed-switch v1, 0xa0   ← 用它分派
+```
+
+**这就是主循环的取指 + 译码**。`packed-switch` 的跳转表在 `00a0` 处，表长 7（= 7 个 opcode）。
+
+**第 ③ 步详解：怎么从 case 体反推 opmap** —— 看 `packed-switch-data` 的 targets，
+每个 case 体做的事**直接读出来**（完整反汇编见 `CLI.md`「L1」节）：
+
+| opcode | case 体（`dexdump` 里的实际指令） | 语义 |
+|---|---|---|
+| `0x07` | `sget STACK; sub v2,#-1; aget v7,STACK,v2; return v7` | **RET**（弹栈顶返回） |
+| `0x01` | `sget STACK; add v4,v2,#1; add v5,v3,#1; aget-byte v3,code,v3; and v3,#255; aget v3,args,v3; aput v3,STACK,v2` | **LOADARG**（读 code[pc] 作下标，取 args[·] 入栈） |
+| `0x02` | `sget STACK; add v4,v2,#1; add v5,v3,#1; aget-byte v3,code,v3; and v3,#255; aput v3,STACK,v2` | **PUSH**（读 code[pc] 作立即数入栈） |
+| `0x06` | `sget STACK; … sub-int/2addr v4, v1` | **SUB**（弹两个、相减） |
+| `0x05` | `… mul-int/2addr v4, v1` | **MUL** |
+| `0x04` | `… add-int/2addr v4, v1` | **ADD** |
+| `0x03` | `… xor-int/2addr v1, v4` | **XOR** |
+
+**这就是 opmap**：`01=LOADARG 02=PUSH 03=XOR 04=ADD 05=MUL 06=SUB 07=RET`。
+**注意 LOADARG 与 PUSH 的区别**：两者都「读 code[pc] 入栈」，但 LOADARG 多一步
+`aget v3, args, v3` —— **用它当 args 的下标**。这一个 `aget` 就是两者的分水岭。
+
+**第 ② 步取字节码**：`Core.<clinit>` 里 `P_MIX` 由 `fill-array-data` 初始化：
+
+```text
+0006d0: 0003 0100 0c00 0000 0100 0101 0302 1104  |0022: array-data (10 units)
+         └ident┘└w=1┘└─size=12──┘└──── 12 字节数据 ────┘
+```
+
+**读**：头部 8 字节 = `ident(0x0300) | width(1) | size(12)`，之后 12 字节就是 `P_MIX`：
+`01 00 01 01 03 02 11 04 02 03 05 07`。
+
+**第 ④ 步：用 opmap 逐字节解码**（这就是「去虚拟化」的一刻）：
+
+```text
+01 00   -> LOADARG 0        (入栈 a)
+01 01   -> LOADARG 1        (入栈 b)
+03      -> XOR              (栈: a^b)
+02 11   -> PUSH 0x11        (入栈 17)
+04      -> ADD              (栈: (a^b)+17)
+02 03   -> PUSH 3
+05      -> MUL              (栈: ((a^b)+17)*3)
+07      -> RET              (返回)
+```
+
+**结果**：`mix(a,b) = ((a ^ b) + 0x11) * 3` —— **与黄金 `CalcLogic.mix` 逐字符一致**。
+`P_TWIST`（`01 00 02 07 05 02 05 06 07`）→ `(a*7)-5`；`P_DIGEST` 同法 → `((a*b)^(a+b))+0x5A`。
+
+---
+
+### §C L2 · 字节码被外置 + 加密（完整演示）
+
+与 L1 **只有两点不同**：(a) 分派形态一模一样（还是 `packed-switch` + `case 0x01..0xFF`）；
+(b) **字节码不在源码里** —— 挪到了 `assets/core_a.dat`，且 XOR 加密。
+
 ```bash
-# L2：载荷外置 + XOR —— 自动定位并解密
+# 一步到位
 python tools/devirt_dex.py samples/apks/app_l2.apk
+#   => note: opmap recovered from switch in Lcom/demo/calc/Core;->run
 #   => note: payload assets/core_a.dat decrypted with 16-byte key from static field
-#   => (之后与 L1 相同：opmap + 三段操作流 + semantics == golden)
+#   => (opmap 与三段操作流和 L1 完全相同，semantics == golden)
 ```
 
-```bash
-# L5：内联 VM —— 没有 Core.run，工具从「多个方法含同一 switch」入手
-python tools/devirt_dex.py samples/apks/app_l5.apk
-#   => note: opmap recovered from switch in Lcom/demo/calc/CalcLogic;->digest
-#   => prog0..prog5  -> semantics == golden mix / twist / digest
-```
+**手工复现**：
+
+**① 找载体** —— `unzip -l` 里唯一那个「既小又不是文本」的条目：
 
 ```bash
-# L3：反射分派 —— 静态不足，工具**明确报告**并指向动态路线
+unzip -l samples/apks/app_l2.apk
+#   => assets/core_a.dat  39   ← 39 字节，比任何正常资源都小
+xxd analysis_output/cli/assets/core_a.dat | head -2
+#   => d56a cce5 6c0a 42fb 816c 6cee cad0 49f9 ...
+#   => d961 c4e1 6e0e 45ff ...
+```
+
+**② 找解密点** —— `Core` 的 `load()`：
+
+```text
+    private static byte[] load(Context ctx) {
+        InputStream in = ctx.getAssets().open(RES);   ← RES = "core_a.dat"（一个普通字面量）
+        ...
+        for (int i = 0; i < raw.length; i++)
+            out[i] = (byte) (raw[i] ^ KEY[i % KEY.length]);   ← 就是这一步：逐字节 XOR
+    }
+    private static final byte[] KEY = {-39,99,-61,-28,108,11,67,-8,-125,125,104,-20,-55,-43,78,-8};
+```
+
+**③ 解密** —— KEY 的十六进制是 `d9 63 c3 e4 6c 0b 43 f8 83 7d 68 ec c9 d5 4e f8`。
+逐字节 XOR 后得到明文：
+
+```text
+密文: d5 6a cc e5 6c 0a 42 fb 81 6c 6c ee ca d0 49 f9 d9 ...
+明文: 0c 09 0f 01 00 01 01 03 02 11 ...
+      └len┘ └───────── 三段字节码 ─────────
+```
+
+**读**：明文前 3 字节 `0c 09 0f` = `12, 9, 15` —— 正是三段字节码的长度。`0c=12` 与 L1 的
+`P_MIX` 长度一致。之后 `01 00 01 01 03 02 11 …` **与 L1 的 `P_MIX` 逐字节相同** —— 证明
+「同一份业务、同一套 opcode 表，只是换了载体」。
+
+**④⑤ 反汇编 + 验证**：拿到字节码后，按 L1 的 opmap 解码、跑测试向量 —— 与黄金一致。
+
+> **本档的教学点**：L1→L2 的变化**只发生在第 ② 步**（找载体）。这说明去虚拟化的能力是
+> **可分解**的：先把①③④做好（L1 就练完），遇到 L2 只需补「怎么找+解密载荷」这一步。
+
+---
+
+### §D L3 · 无 switch，反射分派（静态到此为止）
+
+L3 **没有 `switch`**。看 `Core.run`（`dexdump -d`，完整见 CLI）：
+
+```text
+00081c: 6205 0500   |002c: sget-object v5, Core;.HM:[Ljava/lang/reflect/Method;  ← handler 表（Method 数组）
+000820: 6206 0400   |002e: sget-object v6, Core;.DISPATCH:[I                      ← opcode → 槽位 表
+000824: 4404 0604   |0030: aget v4, v6, v4                                       ← slot = DISPATCH[op]
+000828: 4604 0504   |0032: aget-object v4, v5, v4                                 ← Method m = HM[slot]
+000830: 2440 1600 3785 |0036: filled-new-array {code, regs, STACK, args}         ← 拼 invoke 参数
+00083a: 6e30 2000 6405 |003b: invoke-virtual {v4, v6, v5}, Method;.invoke(...)     ← 反射调用 handler
+```
+
+**读**：分派是「`DISPATCH[op]` → 在 `Method[]` 里取方法 → `invoke`」。**没有一个 switch
+可以把 case 体切出来做指纹** —— opcode 表藏在 `DISPATCH` 数组的**运行期填充**里，而每个
+handler 的语义藏在 `h0..h6` 这些小方法里（要靠动态或更复杂的静态数据流分析把它们连起来）。
+
+```bash
 python tools/devirt_dex.py samples/apks/app_l3.apk
 #   => note: no packed-switch interpreter found -> reflection/dispatch needs dynamic tracing
 #   => (static devirtualization insufficient — dynamic route required)
 ```
 
+**这就是本档的诚实边界**：`devirt_dex.py` **明确报告「静态不够」而不是硬猜**。
+可选的两个下一步：
+
+- **静态半自动**：人工把 `h0..h6` 六个 handler 的字节码读一遍（每个只有几行），能推出
+  语义 —— 但这要人读，不是「工具自动切 case」；
+- **动态**：`frida/trace_dispatch.js` 在 `Method.invoke` 上下 hook，把每次 `(op, handler名)`
+  打出来，直接得到 opcode 表。
+
+---
+
+### §E L4 · 融合算子 + 随机 opcode（静态部分还原）
+
+L4 有**两个**难点：**(a) opcode 值随机且不连续**（`sparse-switch`）；
+**(b) 融合算子** —— 一条 handler 顶好几条逻辑指令（`ADDK` 表示「栈顶 + 立即数」，一条顶
+`PUSH v; ADD` 两条）。
+
 ```bash
-# L4：融合算子 + 随机 opcode —— 静态部分还原，融合算子的立即数拆不开
 python tools/devirt_dex.py samples/apks/app_l4.apk
-#   => recovered opmap (11 entries): 34=XOR, 62=ADD, 87=RET, 101=LOADARG, ...
+#   => recovered opmap (11 entries): 34=XOR, 62=ADD, 87=RET, 101=LOADARG, 120=MUL,
+#         154=XOR, 163=MUL, 202=PUSH, 203=MUL, 210=ADD, 212=SUB
 #   => (disassembly incomplete: 未知 opcode 0x3E @0x5)
-#   => ! fused/inline-immediate opcodes present -> static devirtualization is PARTIAL;
-#      dynamic trace required
+#   => ! fused/inline-immediate opcodes present -> static devirtualization is PARTIAL
 ```
 
-**怎么读**：`opmap` 是「还原出的 opcode → 语义」；`semantics == golden <方法名>` 是**关键一行**
-—— 它表示还原出的操作流跑测试向量后**与黄金答案完全一致**。若显示 `?` 或
-`(disassembly incomplete)`，说明该档静态不够，需转动态。
+**怎么读**：opmap 认出了 11 项 —— 但注意 **`62=ADD` 这类「名字叫 ADD」的项其实是融合算子
+`ADDK`**（「栈顶 + 立即数」）。静态指纹只认得它用了 `add` 指令，**认不出那个立即数**，
+所以它落在 opmap 里却被错标成 `ADD`。反汇编时遇到这些 opcode 就卡住（`未知 opcode 0x3E`），
+于是**只能部分还原**。
 
-### SO 层：`devirt_so.py`
+**为什么立即数拆不开**：L4 的融合 handler 用**带内联立即数的 dalvik 指令**实现，例如
+`add-int/lit16 v8, v8, #0x11` —— 立即数 `0x11` 编在指令里，**字节码里没有对应的独立字节**。
+要还原「`ADDK 0x11`」这条 VM 指令，必须知道「这个 case 体里的 `0x11` 是 VM 的立即数」——
+静态能看出「这里是加法」，但要确定「立即数在网络/业务上的位置」需要按 handler 语义建模，
+超出「形状指纹」的能力 → **转动态**（trace 每次 handler 的入参，直接读那个立即数）。
+
+> **本档的教学点**：随机 opcode（V6）只是**抬高门槛**，真正卡住静态的是**融合算子**。
+> 这也是真实保护器的主要手法之一 —— 不是「换成随机数」，而是「把多条指令合成一条」。
+
+---
+
+### §F L5 · 内联 VM（无 hub —— 形状判据失效后怎么解）
+
+L5 **没有 `Core` 类**。三个业务方法各自内嵌了一份完整的解释器循环：
+
+```java
+public static int mix(int a, int b) {
+    int[] args = new int[]{a, b};
+    {  byte[] code = P_MIX;
+       int[] st = new int[64]; int sp = 0, i = 0;
+       while (i < code.length) {
+           int op = code[i++] & 0xFF;
+           switch (op) { case 0x01: ... case 0x07: return st[--sp]; }   ← 与 twist/digest 里的一模一样
+       } }
+}
+```
 
 ```bash
-# S1：native 中心比较级联 —— 符号化模拟分派，7/7 全部还原
+python tools/devirt_dex.py samples/apks/app_l5.apk
+#   => note: opmap recovered from switch in Lcom/demo/calc/CalcLogic;->digest
+#   => prog0..prog5  -> semantics == golden mix / twist / digest
+```
+
+**怎么解**：**V1（汇聚调用）在这里恒不命中**（没有 hub）—— 但 **V5（多个方法含同一个
+switch）命中**。工具于是改从「内联在 `CalcLogic` 里的那个 switch」入手，切 case 体、
+还原 opmap、取每个方法自己的字节码、解码 —— 结果与 L1 一模一样的三段操作流。
+
+**逐行读法**：`note: opmap recovered from switch in …CalcLogic;->digest` 说明工具**没有**
+找到 `Core.run`（因为不存在），而是从内联在业务方法里的 switch 拿到的 opmap。
+`prog0..prog5` 是 6 段（每个方法各一段字节码，工具按出现顺序编号），它们分别匹配黄金的
+`mix/twist/digest`。
+
+> **本档的教学点**：判据有边界（V1 会漏 L5），但**只要换个结构特征（V5）就还能抓**。
+> 这就是「判据组合」而不是「单一特征」的意义。
+
+---
+
+### §G S1 · native 中心分派（完整演示）
+
+SO 侧前先把「native 解释器长什么样」看清楚。S1 用 `-O0` 编译，比较级联**完整保留**：
+
+```bash
 python tools/devirt_so.py samples/native/libcalc_s1_arm64.so
 #   => note: interpreter = vmr (214 insns, dispatch=switch)
 #   => note: switch opmap: 7/7 cases fingerprinted via comparison-chain simulation
 #   => switch opmap: 1=LOADARG, 2=PUSH, 3=XOR, 4=ADD, 5=MUL, 6=SUB, 255=RET
 ```
 
-**它怎么做到的**：先认「比较级联」`subs wR,wR,#imm / b.eq <case> / b <next>`，写一个**小解释器**
-沿标志位走比较树，走到叶子就是 case 体；再对 case 体做**数据运算指纹** —— 这里有个关键区分：
-`add w8, w8, w9`（寄存器对寄存器 = **数据运算**）和 `add x9, x9, #0x14`（带立即数 = **指针簿记**）
-必须分开，否则每个 case 都会被误认成 ADD。
+#### 手工复现
+
+**① 找解释器** —— `llvm-objdump -d` 里最大的函数是 `vmr`（214 条指令）。它的分派是
+**比较级联**（clang 未优化的 switch 形态）：
+
+```text
+subs w8, w8, #0x1     b.eq 0x1980 <vmr+0xc0>     ← op==1 -> case 体 @0x1980
+                      b    0x1920 <vmr+0x60>     ← 否则下一个比较节点
+subs w8, w8, #0x2     b.eq 0x19d0 <vmr+0x110>
+                      b    0x1930
+subs w8, w8, #0x3     b.eq 0x1a14 <vmr+0x154>
+...
+subs w8, w8, #0xff    b.eq 0x1bd4 <vmr+0x314>
+```
+
+**读**：`subs w8,w8,#imm / b.eq <case> / b <next>` 是一个**比较节点**；`next` 指向下一个
+节点。`devirt_so.py` 的 `_simulate_chain` 就是一个小解释器：沿这个链走，命中就落到 case 体。
+
+**② 找字节码** —— `.rodata` 只有 36 字节：
 
 ```bash
-# S2：运行期装配分派 —— 静态没有稳定 case 边界
+"$NDBIN/llvm-objdump.exe" -s -j .rodata samples/native/libcalc_s1_arm64.so
+#   => 0548 01000101 03021104 020305ff 01000207 ...
+```
+
+**③ 反推 opmap** —— 对每个 case 体做「**数据运算**指纹」。这里有个**必须分清**的陷阱：
+
+```text
+case 0x3 体 (@0x1a14):
+    1a5c: 4a090108   eor w8, w8, w9     ← 两个 w 寄存器运算 = DATA 运算 = XOR ✅
+    1a60: f9401be9   ldr x9, [sp, #0x30]
+    1a64: 91005129   add x9, x9, #0x14  ← 带立即数 = 指针簿记，不是 VM 运算 ❌（必须排除）
+    ...
+    1a80: 14000060   b 0x1c00           ← 回循环尾 = case 体结束
+```
+
+**如果不过滤**：每个 case 体都有 `add x9,x9,#0x14`（那是「`&stack[sp++]`」的地址计算），
+不过滤就会把**每一个** case 都判成 ADD —— 这正是本 lab 踩过的坑（`AGENTS.md` §12.9）。
+正确做法：**只有 `add/sub` 的两个操作数都是 w 寄存器（reg,reg）才算数据运算**。
+
+所以：
+
+| opcode | case 体里的决定性指令 | 语义 |
+|---|---|---|
+| `0x1` | `ldrb w9,[x9,x10]`（读 code[pc]）+ `ldr w8,[x8,w9,lsl #2]`（按它索引 args） | **LOADARG** |
+| `0x2` | 只有 `ldrb`（读 code[pc]） | **PUSH** |
+| `0x3` | `eor w8,w8,w9` | **XOR** |
+| `0x4` | `add w8,w8,w9` | **ADD** |
+| `0x5` | `mul w8,w8,w9` | **MUL** |
+| `0x6` | `sub w8,w8,w9` | **SUB** |
+| `0xff` | 从栈数组弹元素（无 ldrb，有带缩放的 `ldr`） | **RET** |
+
+**④⑤ 解码 + 验证**：用该表解 `.rodata` 的 36 字节：
+
+```text
+01 00   -> LOADARG 0
+01 01   -> LOADARG 1
+03      -> XOR
+02 11   -> PUSH 0x11
+04      -> ADD
+02 03   -> PUSH 3
+05      -> MUL
+ff      -> RET
+=> ((a ^ b) + 0x11) * 3    ✓ 与黄金一致
+```
+
+> **注意 `RET` 的 opcode 在 SO 是 `0xFF`，在 DEX 是 `0x07`** —— 两套样本用不同的 opcode 表
+> （`SO_OPMAP` vs `vmgen.level_opmap`）。这本身也是个知识点：**opcode 表是每套 VM 自己的约定**。
+
+---
+
+### §H S2 / S3 · native 分派被去中心化（静态到此为止）
+
+```bash
 python tools/devirt_so.py samples/native/libcalc_s2_arm64.so
+#   => note: interpreter = Java_com_demo_calc_CalcLogic_mix (106 insns, dispatch=indirect)
 #   => note: dispatch is indirect -> need dynamic tracing ...
+#   => ! static devirtualization not sufficient for this dispatch shape
+
+python tools/devirt_so.py samples/native/libcalc_s3_arm64.so
+#   => note: interpreter = vmr (123 insns, dispatch=threaded)
 #   => ! static devirtualization not sufficient for this dispatch shape
 ```
 
-### 动态路线（静态不够时）
+**S2（运行期装配）**：handler 表 `SLOT[]` 和 opcode 映射 `OPMAP[]` 都在 `assemble()` 里
+**运行期算出来**。静态只能看到一句 `blr x8`（间接调用）——**目标地址运行期才确定**，
+没有稳定的 case 边界可切。
+
+**S3（threaded / computed-goto）**：每个 handler 以 `goto *LBL[op]` 直接跳下一个 handler，
+形成一张 basic block 网。静态看到的是**一堆 `br x8` 互相跳**，**没有中心函数**可切。
+
+**两者的下一步都是动态**：
+
+- S2：`frida/so_vm_trace.js` 在 `blr xN` 处 hook，记录每次跳到的 handler 地址 → 得到
+  `opcode → handler` 映射 → 再回 `llvm-objdump` 看那个 handler 体做什么；
+- S3：trace basic block 的转移序列（`Stalker`），还原控制流图。
+
+> **本档的诚实边界**：S2/S3 是本 lab 的 **WIP**（像 `uncrackable/l3` 那样如实记录），
+> 不假装已解。它们的价值是**证明「静态有边界」**：分派一去中心化，形状判据就只剩「定位」，
+> 真值必须从运行期取。
+
+---
+
+### §I 动态路线（静态不够时的统一兜底）
 
 ```bash
-# 行为 oracle：主动调目标方法，比对黄金值（并在设备上，见下方红字提醒）
+# 行为 oracle：主动调目标方法，比对黄金值（会在设备上安装并启动 app，见下方红字提醒）
 python tools/trace_vm.py --package com.demo.calc --script frida/oracle_run.js --seconds 8
 #   => [oracle] mix(7,3)   = 63   (expect 63)
 #   => [oracle] twist(7)   = 44   (expect 44)
@@ -345,9 +745,49 @@ python tools/trace_vm.py --package com.demo.calc --script frida/oracle_run.js --
 #   => [oracle-neg] mix(0,0)= 51  (expect 51 ≠ 63，负控)
 ```
 
+**为什么动态能兜住静态的缺口**（对照 §A 五步）：
+
+| 静态卡在 | 动态怎么补 |
+|---|---|
+| ① 分派去中心化 | hook 分派指令（`Method.invoke` / `blr xN`），直接读「这次用了哪个 handler」 |
+| ② 载荷加密 | hook 解密函数出口，直接拿到明文字节码 |
+| ③ 融合算子 | hook handler 入参，直接读那个拆不开的立即数 |
+| ④⑤ | 静态④⑤通常还能做；动态结果回来做交叉验证 |
+
+**动态的纪律**（沿用本仓 `METHODS.md` 的「动态分析通用方法集」）：
+
+- **先拿签名再 hook**：`.overload(...)` 靠猜必错，先枚举；
+- **oracle 必配负控**：`oracle_run.js` 里的 `mix(0,0)=51` 就是负控（证明 oracle 有区分度）；
+- **调目标自身的函数**，别把常量抄回 JS 重算 —— 那证明不了你理解了调用关系；
+- **记环境指纹**：设备/Android/frida 版本必须记（本仓钉 frida **16.5.9**，17.x 去掉了 `Java` 全局）。
+
 > ⚠️ **`trace_vm.py` 会在连接的设备上安装并启动目标 app。** 请只在**你有权操作**的设备或
 > **本地模拟器**上运行（本仓推荐 `n4tive_lab` AVD，见 `build/env.sh.example` 与根 `README.md`
 > 的 frida 环境段）。绝不针对他人的真机。
+
+---
+
+### §J 去虚拟化工作流总图（把 §A..§I 串起来）
+
+```text
+              ┌─ ① 定位解释器 ──────────────┐
+detect_vm ────┤                              │
+   │          └─ ② 找字节码 ─────────────────┤
+   │                                          ├─ 全成功 → ④ 解码 → ⑤ 验证 → 完成
+   │          ┌─ ③ 反推 opcode 表 ───────────┘
+   │          │
+   └─ 任一步失败 │
+              ↓
+        ┌──────────────────────────────────────────────┐
+        │ L3：反射分派        → trace Method.invoke     │
+        │ L4：融合算子        → trace handler 入参       │
+        │ S2：运行期装配      → trace blr 目标          │
+        │ S3：threaded        → trace basic block 转移   │
+        └──────────────────────────────────────────────┘
+              ↓
+        动态拿到映射 → 回到 ④ 解码 → ⑤ 验证
+```
+
 
 ---
 

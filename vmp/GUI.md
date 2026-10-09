@@ -72,6 +72,23 @@ vmp/
 代号与量化阈值见 `SCRIPT.md`「判据代号总表」，GUI 只补「可读形态」一列（见上表）。
 **一句话记法**：`V*` 是 DEX 层、`VN*` 是 SO 层、`B13` 是结构性加壳。
 
+### VM 原理在 GUI 里的样子（对照 `SCRIPT.md`「虚拟机是怎么运转的」）
+
+虚拟机就是「取指 → 译码 → 执行」一个循环。图形工具把它**画出来**：
+
+| VM 概念 | jadx-gui（DEX） | IDA / Ghidra（SO） |
+|---|---|---|
+| **主循环** | `Core.run` 是个大方法，里面 `while (i < code.length)` | `vmr` 是个大函数，尾部 `b <loop_head>` 回边 |
+| **取指** | `code[i++] & 0xFF`（一行 Java） | `ldrb wN, [xN, xN]` + `add xN, xN, #1` |
+| **译码/分派** | `switch (op)`（jadx 会标成 packed/sparse） | 一长串 `cmp/subs wN,wN,#imm` + `b.eq`（比较级联） |
+| **栈（求值栈）** | `STACK[sp++]` / `STACK[--sp]` | `ldr/str wN, [xN, #0x14]` + `lsl #2` |
+| **opcode 表** | switch 的 `case` 值 | 比较级联里的 `#imm` |
+| **字节码** | jadx 点开 `P_MIX` 看到 `byte[]`（有符号十进制） | IDA 跳到 `.rodata` 看紧凑字节 |
+
+**怎么判**：在 jadx-gui 里，**一个方法体内同时出现 `while` + `switch` + `数组[指针++]`**，就是
+一台 VM 的解释器；在 IDA 里，**一个函数体内同时出现 `ldrb` + 一串 `cmp/b.eq` + 回边**，就是
+native 解释器。**看到这个骨架，就知道样本用了虚拟化保护**（不必依赖任何字符串）。
+
 ---
 
 ## 判定：这是虚拟化保护吗（图形工具）
@@ -176,57 +193,103 @@ public static int run(int id, int[] args) {
 
 ## 脱壳：图形工具参与方式
 
+### 图形工具版「去虚拟化五步」（对照 `SCRIPT.md` §A）
+
+`SCRIPT.md` 讲了通用五步；在图形工具里它们长这样：
+
+| 步 | jadx-gui / IDA 里怎么做 |
+|---|---|
+| **① 定位解释器** | jadx-gui：点开业务类，找**方法体里带 `while`+`switch` 的那个大方法**；IDA：找**最大的函数**，看它的比较级联/跳转表 |
+| **② 找字节码** | jadx-gui：点 `P_MIX` 之类的静态 `byte[]` 跳过去；或看 `Core.load` 读哪个 assets；010 Editor：跳到该文件/偏移看字节 |
+| **③ 反推 opmap** | jadx-gui：**逐个 `case` 点开，读它内部做了什么运算**（点 `case 0x03:` 那段，看是 `xor-int`）；IDA：逐个 case 地址（按 `G` 跳）看 `eor/add/mul/sub` |
+| **④ 解码** | 拿 010 Editor 里的字节码 + ③ 的表，一条条翻译（纸笔 / 记事本） |
+| **⑤ 验证** | jadx-gui 里点黄金类 `CalcLogic.mix`，把你翻译的表达式与它对照；或在设备上跑 `frida/oracle_run.js` |
+
+**图形工具卡在哪**（与 `SCRIPT.md` §A 的「卡住」一一对应）：① 卡住 = jadx 里 `Core.run` 没有
+`switch` 而是 `invoke Method`（L3）；③ 卡住 = case 体里是 `add-int/lit16`（融合算子，立即数
+编在指令里，GUI 也拆不开，L4）；SO 侧 ① 卡住 = IDA 里没有中心函数，只有 `blr`/`br`（S2/S3）。
+
+---
+
 ### L1 · 用 010 Editor 手工读「自定义字节码」
 
 > 这一步是 `CLI.md`「L1 · 从 fill-array-data 取字节码」的**图形版**：同一个产物，用 GUI 读。
 
 1. 010 Editor `File → Open`，选 `samples/dex/level_L1.dex`（或直接开 APK 里的 `classes.dex`）；
-2. 用 `Search → Find`（或 `Ctrl+F`）搜 `fill-array-data` 对应的数据区：
-   在 jadx-gui 里点 `P_MIX` 能看到它的大致 index，再回到 010 Editor 按 `Ctrl+G` 跳到该偏移；
-3. 看到 `00 03 | 01 00 | 0c 00 00 00 | 01 00 01 01 03 02 11 04 02 03 05 07`：
+2. 在 jadx-gui 里先定位：点开 `Core → <clinit>`，看到 `P_MIX` 由 `fill-array-data` 初始化 ——
+   jadx 会把 `fill-array-data` 的偏移显示出来（形如 `+0x0000001e`）；把 `Core.<clinit>` 起始地址
+   加上该偏移，就是数据区；
+3. 在 010 Editor 里按 `Ctrl+G` 跳到该偏移，看到：
+   `00 03 | 01 00 | 0c 00 00 00 | 01 00 01 01 03 02 11 04 02 03 05 07`：
    - `00 03` = ident（`0x0300`，表示 fill-array-data）；
    - `01 00` = element width = 1（字节数组）；
    - `0c 00 00 00` = size = 12；
    - 后面 12 字节就是 `P_MIX` 的内容。
+4. 回到 jadx-gui，**逐个点开 `Core.run` 的 `case`**，读它的语义（这是 ③ 的关键）：
 
-**怎么判**：这 12 字节 `01 00 01 01 03 02 11 04 02 03 05 07` 与 `Core.run` 的 switch 分支对照：
+```java
+switch (op) {
+    case 0x01: STACK[sp++] = args[code[i++] & 0xFF]; break;   // ← 点进来看到这个 = LOADARG
+    case 0x02: STACK[sp++] = code[i++] & 0xFF; break;          // ← 少了 args[...] = PUSH
+    case 0x03: { int b = STACK[--sp], a = STACK[--sp]; STACK[sp++] = a ^ b; break; }  // XOR
+    case 0x04: ... a + b ...   // ADD ; case 0x05: MUL ; case 0x06: SUB
+    case 0xFF: return STACK[--sp];                             // RET
+}
+```
+
+**怎么判**：这 12 字节 `01 00 01 01 03 02 11 04 02 03 05 07` 与上面读到的 case 语义对照：
 `01`=LOADARG、`00`=参数 0、`01`=LOADARG、`01`=参数 1、`03`=XOR、`02`=PUSH、`11`=0x11、
 `04`=ADD、`02`=PUSH、`03`=3、`05`=MUL、`07`=RET → **`((a ^ b) + 0x11) * 3`**。
 
+> **jadx 显示 `byte[]` 是有符号十进制**（`-1` 其实是 `0xFF`、`17` 就是 `0x11`）——
+> 对照时先把负数换算回无符号，否则 opmap 会整体错位（`AGENTS.md` §12.12）。
+>
 > 同样的操作也能在 `samples/payloads/level_L1.bin` 上做（那是「长度头 + 三段字节码」的导出件）。
 
 ### L2 · 用 010 Editor 读密文载荷
 
 1. 010 Editor 打开 `samples/payloads/level_L2.bin`（等价于 APK 里的 `assets/core_a.dat`）；
 2. 你会看到高熵字节（`d5 6a cc e5 6c 0a 42 fb …`）；
-3. 在 jadx-gui 里打开 `app_l2.apk`、点开 `Core` 的 `KEY` 数组，看到 16 字节密钥；
-4. 回到 010 Editor，用 `Tools` 里的 XOR 功能（或手算第一个字节 `d5 ^ d9 = 0c = 12`）验证：
-   解密后第一字节 `0c` 正好是 `P_MIX` 的长度 12 → 载荷 = `[12,9,15] + 三段字节码`。
+3. 在 jadx-gui 里打开 `app_l2.apk`、点开 `Core` 的 `KEY` 数组，看到 16 字节密钥
+   （jadx 显示为有符号十进制：`-39, 99, -61, …` = `d9 63 c3 …`）；
+4. 回到 010 Editor，用 `Tools → Convert → XOR`（或手算第一个字节 `d5 ^ d9 = 0c = 12`）验证：
+   解密后第一个字节 `0c` 正好是 `P_MIX` 的长度 12 → 载荷 = `[12,9,15] + 三段字节码`。
 
-**怎么判**：解出来的前 3 字节是各段长度，之后按 L1 的方法读字节码。**XP 关键点**：L2 与 L1
-的 switch 分支**完全一样**（都是 `case 0x01..0xFF` 那套），差别只在「字节码从哪来」。
+**怎么判**：解出来的前 3 字节是各段长度，之后按 L1 的方法读字节码（case 语义从 jadx 的
+`Core.run` 读）。**关键点**：L2 与 L1 的 switch 分支**完全一样**（都是 `case 0x01..0xFF` 那套），
+差别只在「字节码从哪来」。
 
 ### L3 / L4 / L5 · 图形工具能看，但解不完整
 
 - **L3**：jadx-gui 里 `Core.run` **没有 switch**，而是 `Method[]` + `for` 循环 + `invoke`
   （反射）。**opcode→handler 的映射静态看不全**（映射在 `int[] DISPATCH` 里，但反射目标的分派
-  关系要靠动态）；→ 转 `SCRIPT.md` / `frida`。
-- **L4**：jadx-gui 能看 `sparse-switch` 与各 case 体，但**融合算子把立即数编进了指令**，
-  图形界面也拆不开 → 静态只能部分还原。
-- **L5**：jadx-gui 里逐个方法看内嵌 switch，**可以按 L1 的方法人工还原**（每个方法一份字节码）。
+  关系要靠动态 —— 不过可以**人工**把 `h0..h6` 六个小方法的字节码各读一遍，得到语义）；
+  → 转 `SCRIPT.md` / `frida`。
+- **L4**：jadx-gui 能看 `sparse-switch` 与各 case 体，但**融合算子把立即数编进了指令**
+  （case 体里是 `v8 = v8 + 0x11` 这种），图形界面也拆不开 → 静态只能部分还原。
+- **L5**：jadx-gui 里**没有 `Core` 类**，但 `CalcLogic` 的 `mix/twist/digest` **每个方法体内
+  都有一份相同的 switch** —— 对**每个方法**重复 L1 的第 3、4 步即可人工还原
+  （opmap 是同一套，字节码是每个方法各自的那一段）。
 
 ### SO · 用 IDA/Ghidra 看 case 块并人工还原（S1）
 
 1. IDA/Ghidra 打开 `libcalc_s1_arm64.so`；
-2. 找到 `vmr`（最大值函数），看它的比较级联 `subs w8,w8,#0x1 / b.eq <case1>`；
+2. 找到 `vmr`（最大值函数 —— Ghidra 里按 Function 大小排序），看它的比较级联
+   `subs w8,w8,#0x1 / b.eq <case1>`；
 3. 依次跳到每个 `case` 目标地址（IDA 里按 `G` 输入地址），看块内的**数据运算**：
-   - 有 `eor w8,w8,w9` → XOR；有 `add w8,w8,w9` → ADD；`mul` → MUL；`sub` → SUB；
-   - 只有 `ldrb` → PUSH；`ldrb` + 带缩放的 `ldr` → LOADARG；从栈数组弹元素 → RET。
-4. 得到 opmap 后，对照 `.rodata` 的字节（用 010 Editor 打开 `.so` 跳到 `.rodata` 偏移）
-   人工解码。
+   - 有 `eor w8,w8,w9` → XOR；有 `add w8,w8,w9`（**两个 w 寄存器**）→ ADD；`mul` → MUL；`sub` → SUB；
+   - 只有 `ldrb` → PUSH；`ldrb` + 带缩放的 `ldr`（`lsl #2`）→ LOADARG；从栈数组弹元素 → RET。
+4. 得到 opmap 后，对照 `.rodata` 的字节（用 010 Editor 打开 `.so`，跳到 `llvm-readelf -S`
+   给出的 `.rodata` 偏移 `0x548`）人工解码：`01 00 01 01 03 02 11 04 02 03 05 ff`
+   → `((a ^ b) + 0x11) * 3`。
 
 **怎么判**：解出来应与黄金逻辑一致（`((a ^ b) + 0x11) * 3` 等）。**注意**：`add x9,x9,#0x14`
-是**指针簿记**（不是 VM 语义），别把它当成 ADD —— 这是本 lab 踩过的坑，IDA 里看着也很像。
+是**指针簿记**（不是 VM 语义），别把它当成 ADD —— 这是本 lab 踩过的坑（`AGENTS.md` §12.9），
+IDA 里看着也很像。**只有两个 `w` 寄存器的 `add/sub` 才算数据运算。**
+
+> **S2/S3 在 IDA 里**：S2 的 `vmr` 里只有一句 `blr x8`（间接调用，目标运行期才算）；S3 里是
+> 一串 `br x8` 互相跳（函数图里没有中心节点）。**图形工具到此为止**，要还原 opcode 表必须动态。
+
 
 ---
 
