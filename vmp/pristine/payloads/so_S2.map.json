@@ -1,0 +1,13 @@
+{
+  "level": "S2",
+  "opmap": {
+    "LOADARG": 1,
+    "PUSH": 2,
+    "XOR": 3,
+    "ADD": 4,
+    "MUL": 5,
+    "SUB": 6,
+    "RET": 255
+  },
+  "note": "native VM, runtime-assembled handler table + computed opcode map (indirect call)"
+}

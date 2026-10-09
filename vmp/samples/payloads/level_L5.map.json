@@ -1,0 +1,13 @@
+{
+  "level": "L5",
+  "opmap": {
+    "LOADARG": 1,
+    "PUSH": 2,
+    "XOR": 3,
+    "ADD": 4,
+    "MUL": 5,
+    "SUB": 6,
+    "RET": 7
+  },
+  "note": "inline VM in each business method (no Core hub)"
+}

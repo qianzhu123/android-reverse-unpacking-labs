@@ -1,0 +1,158 @@
+{
+  "note": "canonical op stream + vectors + golden results; 由 tools/vmgen.py 生成",
+  "methods": {
+    "mix": {
+      "args": 2,
+      "ops": [
+        [
+          "LOADARG",
+          0
+        ],
+        [
+          "LOADARG",
+          1
+        ],
+        [
+          "XOR"
+        ],
+        [
+          "PUSH",
+          17
+        ],
+        [
+          "ADD"
+        ],
+        [
+          "PUSH",
+          3
+        ],
+        [
+          "MUL"
+        ],
+        [
+          "RET"
+        ]
+      ],
+      "vectors": [
+        [
+          7,
+          3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          -1,
+          5
+        ]
+      ],
+      "results": [
+        63,
+        51,
+        33
+      ]
+    },
+    "twist": {
+      "args": 1,
+      "ops": [
+        [
+          "LOADARG",
+          0
+        ],
+        [
+          "PUSH",
+          7
+        ],
+        [
+          "MUL"
+        ],
+        [
+          "PUSH",
+          5
+        ],
+        [
+          "SUB"
+        ],
+        [
+          "RET"
+        ]
+      ],
+      "vectors": [
+        [
+          7
+        ],
+        [
+          0
+        ],
+        [
+          -9
+        ]
+      ],
+      "results": [
+        44,
+        -5,
+        -68
+      ]
+    },
+    "digest": {
+      "args": 2,
+      "ops": [
+        [
+          "LOADARG",
+          0
+        ],
+        [
+          "LOADARG",
+          1
+        ],
+        [
+          "MUL"
+        ],
+        [
+          "LOADARG",
+          0
+        ],
+        [
+          "LOADARG",
+          1
+        ],
+        [
+          "ADD"
+        ],
+        [
+          "XOR"
+        ],
+        [
+          "PUSH",
+          90
+        ],
+        [
+          "ADD"
+        ],
+        [
+          "RET"
+        ]
+      ],
+      "vectors": [
+        [
+          7,
+          3
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          12,
+          5
+        ]
+      ],
+      "results": [
+        121,
+        93,
+        135
+      ]
+    }
+  }
+}

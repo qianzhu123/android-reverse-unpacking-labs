@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 业务 App 清单。包名/标签刻意中性（不含 vmp / 加固产品名等可见特征）。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.demo.calc">
+
+    <uses-sdk
+        android:minSdkVersion="24"
+        android:targetSdkVersion="36" />
+
+    <application
+        android:label="Calc"
+        android:allowBackup="false">
+
+        <activity
+            android:name="com.demo.calc.CalcActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

@@ -1,0 +1,13 @@
+{
+  "level": "S1",
+  "opmap": {
+    "LOADARG": 1,
+    "PUSH": 2,
+    "XOR": 3,
+    "ADD": 4,
+    "MUL": 5,
+    "SUB": 6,
+    "RET": 255
+  },
+  "note": "native VM, central while+switch dispatch, bytecode in .rodata"
+}

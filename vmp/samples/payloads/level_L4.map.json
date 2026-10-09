@@ -1,0 +1,17 @@
+{
+  "level": "L4",
+  "opmap": {
+    "LOADARG": 101,
+    "PUSH": 202,
+    "XOR": 154,
+    "ADD": 210,
+    "MUL": 163,
+    "SUB": 212,
+    "RET": 87,
+    "ADDK": 62,
+    "MULK": 203,
+    "XORK": 34,
+    "ADDMUL": 120
+  },
+  "note": "super-ops + randomized non-contiguous opcodes: 0x22 0x3E 0x57 0x65 0x78 0x9A 0xA3 0xCA 0xCB 0xD2 0xD4"
+}

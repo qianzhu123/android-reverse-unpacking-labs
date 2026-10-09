@@ -88,6 +88,15 @@ android-reverse/
 │   ├── AGENTS.md
 │   ├── main.py  analyzer.py  unpack.py  labs.py  regression.py  gui.py  build_exe.py
 │   └── dist/unpacker.exe
+├── vmp/                 # VMP (virtualization protection) lab — devirtualize custom-bytecode VMs
+│   ├── SCRIPT.md  CLI.md  GUI.md  AGENTS.md
+│   ├── src/             # golden logic (plaintext, no VM)
+│   ├── samples/         # self-built: golden + L1..L5 (DEX VM) + S1..S3 (SO/ARM64 VM) + 4 negatives
+│   ├── pristine/        # sha256 baseline of samples/
+│   ├── tools/           # vmlang vmgen build_levels build_so_levels dexscan detect_vm
+│   │                    #   devirt_dex devirt_so verify_gen check_negatives trace_vm + ported utils
+│   ├── build/           # locate.sh, env.sh.example, build_{golden,vm,so,neg}.sh, fetch_external.ps1
+│   └── frida/           # trace_dispatch.js, so_vm_trace.js, oracle_run.js
 ├── uncrackable/         # REAL-TARGET labs (external: OWASP MASTG UnCrackable, PROMPT-REAL.md)
 │   ├── README.md        # lab-family overview + shared-runner notes
 │   ├── TUTORIAL.md      # guided learning path l1 -> l2 -> l3 (start here)
@@ -106,6 +115,11 @@ android-reverse/
 > prompt template — but it follows the same three-doc + fixed-directory-layout
 > conventions. It used to be an independent git repo; its history was folded into this
 > repository.
+> `vmp/` covers *virtualization protection* (the other topic `PROMPT.md` puts out of
+> scope for the packer labs) and follows the `PROMPT.md` self-built route: every sample
+> is generated from one expression spec, so it is byte-reproducible and its samples are
+> committed. It is a three-doc lab too, and ships `SCRIPT.md`/`CLI.md`/`GUI.md` +
+> `AGENTS.md`.
 
 ---
 
@@ -117,6 +131,7 @@ android-reverse/
 | `upx_practice` | vanilla UPX + a **feature-rewritten variant** | self-built NDK `.so` | scoring detector, dump-and-fix, negative / section-stripped samples |
 | `ajiami` | Aijiami DEX hardening — gen-1 (whole-DEX encryption) → gen-2 (class extraction) → gen-3 + string-obfuscation variant | self-built Android app + shell | 3-generation detection, script + manual unpack, negative-sample regression |
 | `ollvm` | Java plaintext / Java XOR / JNI XOR string protection + native control-flow baseline (`nativeOpaque`); OLLVM pass comparison via external fork | self-built Android app (archived debug/release APKs) | three-way SCRIPT/CLI/GUI analysis, verified native address chain (`0x24f10 → 0x24fd4 → 0x14db9`), PowerShell toolchain |
+| `vmp` | **virtualization protection** (code → custom bytecode + interpreter), from a plain `packed-switch` VM up to reflection dispatch, fused ops with randomized opcodes, an inline VM, and native (SO/ARM64) switch / runtime-assembled / threaded VMs | self-built Android app + NDK `.so` (5 DEX levels + 3 SO levels + 4 adversarial negatives) | structural verdicts (V1..V6 / VN1·VN2 / B13) that never rely on names or strings; static devirtualization (`devirt_dex`/`devirt_so`); a semantic oracle (`verify_gen`) + two-way negative regression (`check_negatives`) |
 | `uncrackable/l1` | **real-target** (external): OWASP MASTG UnCrackable Level 1 — AES check + root detection | third-party APK (gitignored) | `PROMPT-REAL.md` route: static recon → Frida spawn-gated bypass → active-invocation oracle (`bar`-style check returns true); frida/venv pinned 16.5.9 |
 | `uncrackable/l2` | **real-target** (external): OWASP MASTG UnCrackable Level 2 — native `strncmp` check + fork/ptrace anti-debug | third-party APK + `libfoo.so` (gitignored) | native reversing (llvm-nm/objdump → `.rodata` secret + `.bss` gate @0x400c), anti-debug bypass, artifact + algorithm oracle |
 | `uncrackable/l3` | **real-target** (external) · **WIP**: OWASP MASTG UnCrackable Level 3 — native check + constructor-level anti-tamper watchdog + integrity check | third-party APK + `libfoo.so` (gitignored) | static done (bar = `keyTable ^ plaintext`, runtime decrypt); **dynamic route not yet passed** — anti-Frida watchdog; blocker + next directions documented |

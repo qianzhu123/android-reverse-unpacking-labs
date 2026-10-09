@@ -1,0 +1,13 @@
+{
+  "level": "L2",
+  "opmap": {
+    "LOADARG": 1,
+    "PUSH": 2,
+    "XOR": 3,
+    "ADD": 4,
+    "MUL": 5,
+    "SUB": 6,
+    "RET": 7
+  },
+  "note": "bytecode in assets/core_a.dat (XOR key=d963c3e46c0b43f8837d68ecc9d54ef8)"
+}

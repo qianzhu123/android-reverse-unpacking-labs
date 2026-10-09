@@ -1,0 +1,13 @@
+{
+  "level": "L1",
+  "opmap": {
+    "LOADARG": 1,
+    "PUSH": 2,
+    "XOR": 3,
+    "ADD": 4,
+    "MUL": 5,
+    "SUB": 6,
+    "RET": 7
+  },
+  "note": "inline bytecode; regular packed-switch; opcodes 0x01..0xFF"
+}
