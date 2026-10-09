@@ -842,9 +842,26 @@ python tools/trace_vm.py --package com.demo.calc --script frida/so_vm_trace.js
 于是 **`opcode 0x01 = LOADARG`、`0x03 = XOR`、`0x04 = ADD`…**，与 S1/L1 的语义**完全一致**
 （同一份业务），但**分派表只存在于运行期** —— 这就是 S2 与 S1 的区别。
 
-- **S3 怎么继续**：threaded 分派**没有表**（`llvm-nm` 里没有 `OPMAP/SLOT`）。要还原
-  `opcode→handler` 只能挂 `Stalker` 记录 basic block 转移，再与 `.rodata` 的字节码对齐 ——
-  本 lab 的 `frida/so_vm_trace.js` 文末给了示例，**留作练习**（本档是本 lab 的诚实 WIP）。
+**S1/S3 用同一个脚本**（它们没有分派表，脚本改 dump `.rodata` 的只读字节码）：
+
+```bash
+# S1
+python tools/trace_vm.py --package com.demo.calc --script frida/so_vm_trace.js
+#   => [so] profile = S1 (no central dispatch table)
+#   => [so] bytecode @0x548 (12B) hex=0100010103021104020305ff
+#   => [so] bytecode @0x554 (9B)  hex=0100020705020506ff
+#   => [so] bytecode @0x55d (15B) hex=0100010105010001010403025a04ff
+#   => [so] note: S1 的 opcode 语义静态已能还原（见 devirt_so.py 的 7/7）
+```
+
+**读**：`01 00 01 01 03 02 11 04 02 03 05 ff` 与静态从 `.rodata` 读到的一致 —— 证明
+「静态取到的字节码 == 运行期实际执行的字节码」。S3 的输出相同（同一份字节码），只是分派是
+threaded。
+
+- **S3 怎么继续**：threaded 分派**没有表**（`llvm-nm` 里没有 `OPMAP/SLOT`，脚本会走
+  S1/S3 分支）。要还原 `opcode→handler` 只能挂 `Stalker` 记录 basic block 转移，再与
+  `.rodata` 的字节码对齐 —— 本 lab 的 `frida/so_vm_trace.js` 文末给了示例，**留作练习**
+  （本档是本 lab 的诚实 WIP）。
 
 > **本档的诚实边界**：S2/S3 是本 lab 的 **WIP**（像 `uncrackable/l3` 那样如实记录），
 > 不假装已解。它们的价值是**证明「静态有边界」**：分派一去中心化，形状判据就只剩「定位」，
