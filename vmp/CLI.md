@@ -414,8 +414,25 @@ unzip -o -q samples/apks/app_l4.apk classes.dex -d analysis_output/cli/
 #   跳转表里 case 值形如 0x22 0x3E 0x57 ... —— 大且不连续
 ```
 
-**读法**：`sparse-switch` 说明 opcode 随机；再看某个 case 体里是 `add-int/lit16 v8, v8, #0x11`
-这类**带内联立即数**的算术 —— 立即数编在指令里，**字节码里没有独立字节**，通用命令拆不开。→ 转动态。
+**读法 ①（随机 opcode）**：`sparse-switch` 说明 opcode 随机、不连续（V6）。
+
+**读法 ②（融合算子 —— 本档真正的难点）**：把每个 case 体读出来 —— 会发现有**两种**形状：
+
+```bash
+# 基础指令（作用在两个栈元素上）：
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk '/name          : .run./{f=1} f' | grep -B2 "xor-int/2addr"
+#   => sget STACK; ... aget ...; aget ...; xor-int/2addr ...; aput    ← XOR（弹 2 压 1）
+
+# 融合算子（只作用在栈顶 + 一个内联立即数上）—— 同一条 xor 指令：
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk '/name          : .run./{f=1} f' | grep -B3 "aget-byte" | grep -A3 "// #11"
+#   => ... aget-byte vN, code, pc; and #255; xor-int/lit8 v8, v8    ← XORK（栈顶 ^= 立即数）
+```
+
+**为什么拆不开（关键）**：融合算子用的是**同一条** `xor`/`add`/`mul` 指令 —— 差别只在
+「**两个寄存器**」还是「**寄存器 + 内联立即数**」。而那个立即数的取法（`aget-byte code[pc]`
++ `and #255`）**与 `PUSH` 的取立即数一模一样**。所以通用命令能看出「这里是异或」，但
+**分不出**「异或的是栈上两个值、还是栈顶一个值异或一个立即数」→ 映射二义性 → **转动态**
+（trace handler 入参，直接读那个立即数）。
 
 ### L5：内联 VM（本路线可人工解，但逐个方法做）
 

@@ -364,10 +364,17 @@ $ python tools/devirt_dex.py samples/apks/app_l4.apk
     out) -> static devirtualization is PARTIAL; dynamic trace required
 ```
 
-**Honest outcome**: L1/L2/L5 are **fully** devirtualized. **L3 is not statically solvable**
-(no switch; reflection). **L4 is only partial** — the fingerprint recognises the
-*arithmetic kind* of a fused op (so `34=XOR`, `62=ADD`) but cannot recover the inline
-immediate, so the recovered opmap doesn't fully cover the opcodes and the disassembly
+**Honest outcome**: L1/L2/L5 are **fully** devirtualized. **L3 is not tool-solvable**
+(no switch; reflection) — though a *human* can read `ensureInit`'s `aput` constants
+(opcode→slot), the `HM` `getDeclaredMethod("hN")` order (slot→handler), and the
+~20-instruction `h0..h6` bodies (handler→semantics), which is why §4.1 says "no
+single switch to slice" rather than "unsolvable". **L4 is only partial** — the
+fingerprint cannot separate a base op from its fused variant: in the **real** dex,
+`0x9A`=XOR and `0x22`=XORK both fingerprint as `XOR`; `0xD2`=ADD and `0x3E`=ADDK both
+as `ADD`; `0xA3`=MUL / `0xCB`=MULK / `0x78`=ADDMUL all as `MUL`. The cause: a fused
+handler uses the *same* arithmetic instruction — the only difference is reg,reg vs a
+reg + an inline immediate (`aget-byte code[pc]; and #255`), which is byte-identical in
+shape to `PUSH`'s immediate read. So the recovered opmap is ambiguous and disassembly
 stops. This is a **documented boundary**, not a bug.
 
 ### 6.2 SO — `tools/devirt_so.py`
