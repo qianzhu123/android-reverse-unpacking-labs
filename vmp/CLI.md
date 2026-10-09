@@ -515,6 +515,28 @@ sha256sum samples/native/libcalc_s1_arm64.so
 
 > **注意 `RET` 的 opcode：SO 是 `0xFF`，DEX 是 `0x07`** —— 两套 VM 各自的约定。
 
+### S2 / S3：分派在运行期才装配 —— 通用命令到此为止，改走动态取真值
+
+> ⚠️ 下面的 `frida` 属**动态工具**；本文件（CLI）平时只讲通用命令，这一节是**例外**，
+> 因为 S2/S3 的 opcode→handler 映射**只存在于运行期**，没有任何静态命令能读出来。
+> 用本 lab 的 runner 跑（等价于 `frida -U -f com.demo.calc -l <脚本>`）：
+>
+> ```bash
+> # L3（反射分派）：取「本机字节码」+「opcode→slot→handler」表
+> python tools/trace_vm.py --package com.demo.calc --script frida/trace_dispatch.js
+> #   => [prog] id=0 len=12 hex=010001010302110402030507
+> #   => [opmap] opcode=0x01 -> slot=0 -> h0
+> #   => [opmap] opcode=0x03 -> slot=2 -> h2      （再读 Core.h2 的字节码 -> XOR）
+>
+> # S2（运行期装配 handler 表）：读 OPMAP[]/SLOT[] 两个静态表
+> python tools/trace_vm.py --package com.demo.calc --script frida/so_vm_trace.js
+> #   => [so] opcode=0x01 -> slot=3
+> #   => [so] slot=3 -> handler=0x1d54
+> ```
+>
+> 前置：目标须是 **dyn 版**（`samples/apks/app_lN_dbg.apk`，见 `build/build_dyn.sh`）。
+> 细节与逐行读法见 `SCRIPT.md`「脱壳 · §D/§H」。
+
 ### S2 / S3：本文件**做不到**，如实说明
 
 ```bash

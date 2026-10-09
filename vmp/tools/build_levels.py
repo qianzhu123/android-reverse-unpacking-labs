@@ -41,6 +41,37 @@ LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5']
 
 BASE = ['LOADARG', 'PUSH', 'XOR', 'ADD', 'MUL', 'SUB', 'RET']
 
+# 动态版探针（只进 --dyn 生成的源码；正式样本不带）
+GETTER = '''
+    /**
+     * 调试用探针（只在「动态版（debuggable）」里出现）：
+     *   peek(id)  读某 id 的载荷字节码（**只读**，不清空 —— 免得第一次调用就把后续读掉）
+     *   wipe()    读完后清空载荷（trace 脚本最后显式调一次，进程里不留东西）
+     */
+    public static byte[] peek(int id) { return Core.peekCode(id); }
+    public static void wipe() { Core.wipe(); }
+'''
+
+_PEEK_ARR = '''
+    // ---- 动态版（debuggable）才编译进来：取一次载荷后清空 ----
+    public static byte[] peekCode(int id) {
+        return (id == 0) ? P_MIX : (id == 1) ? P_TWIST : P_DIGEST;
+    }
+    public static void wipe() { }
+'''
+_PEEK_CACHE = '''
+    // ---- 动态版（debuggable）才编译进来：取一次载荷后清空 ----
+    public static byte[] peekCode(int id) {
+        byte[] all = CACHE; if (all == null || all.length < 3) return new byte[0];
+        int[] lens = { all[0] & 0xFF, all[1] & 0xFF, all[2] & 0xFF };
+        int off = 3; for (int k = 0; k < id; k++) off += lens[k];
+        byte[] seg = new byte[lens[id]];
+        System.arraycopy(all, off, seg, 0, lens[id]);
+        return seg;
+    }
+    public static void wipe() { CACHE = null; }
+'''
+
 
 def _w(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -64,6 +95,8 @@ import android.widget.TextView;
 public class CalcActivity extends Activity {
 
     public static final String TAG = "CALC";
+
+%(getter)s
 
     @Override
     protected void onCreate(Bundle state) {
@@ -178,6 +211,7 @@ public final class Core {
 
     private static final int[] STACK = new int[64];
 
+%(peek)s
     public static int run(int id, int[] args) {
         byte[] code = (id == 0) ? P_MIX : (id == 1) ? P_TWIST : P_DIGEST;
         int sp = 0, i = 0;
@@ -242,7 +276,7 @@ public final class Core {
             return new byte[0];
         }
     }
-
+%(peek)s
     public static int run(int id, int[] args) {
         byte[] all = CACHE;
         if (all == null || all.length < 3) return 0;
@@ -314,6 +348,7 @@ public final class Core {
 
 %(handlers)s
 
+%(peek)s
     public static int run(int id, int[] args) {
         ensureInit();
         if (HM == null) return 0;
@@ -376,17 +411,18 @@ public final class CalcLogic {
 
 
 # ---------------------------------------------------------------- 各层生成
-def emit_L1(opmap, bc, pkg):
-    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': ''})
+def emit_L1(opmap, bc, pkg, dyn=False):
+    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': '', 'getter': GETTER if dyn else ''})
     _w(os.path.join(pkg, 'CalcLogic.java'), CALCLOGIC)
     _w(os.path.join(pkg, 'Core.java'), CORE_SWITCH % {
         'p_mix': _arr(bc['mix']), 'p_twist': _arr(bc['twist']),
-        'p_digest': _arr(bc['digest']), 'cases': _expr_cases(opmap, st='STACK')})
+        'p_digest': _arr(bc['digest']), 'cases': _expr_cases(opmap, st='STACK'),
+        'peek': _PEEK_ARR if dyn else ''})
     _write_payload('L1', bc)
     return 'inline bytecode; regular packed-switch; opcodes 0x01..0xFF'
 
 
-def emit_L2(opmap, bc, pkg):
+def emit_L2(opmap, bc, pkg, dyn=False):
     rng = random.Random(0)
     key = bytes(rng.randrange(1, 256) for _ in range(16))
     # 明文载荷 = [len_mix,len_twist,len_digest] + 三段字节码；asset 存的是整块密文
@@ -397,14 +433,16 @@ def emit_L2(opmap, bc, pkg):
     with open(os.path.join(PAYLOADS, 'level_L2.plain.bin'), 'wb') as f:
         f.write(plain)  # 解密后明文（文档/答案用）
     _w(os.path.join(pkg, 'CalcActivity.java'),
-       ACTIVITY % {'init': '        Core.init(getApplicationContext());\n'})
+       ACTIVITY % {'init': '        Core.init(getApplicationContext());\n',
+                   'getter': GETTER if dyn else ''})
     _w(os.path.join(pkg, 'CalcLogic.java'), CALCLOGIC)
     _w(os.path.join(pkg, 'Core.java'), CORE_L2 % {'res': 'core_a.dat', 'key': _arr(key),
-        'cases': _expr_cases(opmap, st='STACK', code='all')})
+        'cases': _expr_cases(opmap, st='STACK', code='all'),
+        'peek': _PEEK_CACHE if dyn else ''})
     return 'bytecode in assets/core_a.dat (XOR key=%s)' % key.hex()
 
 
-def emit_L3(opmap, bc, pkg):
+def emit_L3(opmap, bc, pkg, dyn=False):
     dispfil = []
     for name in _HORDER:
         dispfil.append('            DISPATCH[0x%02X] = %d;' % (opmap[name], _HORDER.index(name)))
@@ -412,31 +450,32 @@ def emit_L3(opmap, bc, pkg):
     for i in range(len(_HORDER)):
         methodrefs.append('                Core.class.getDeclaredMethod("h%d", sig),' % i)
     handlers = '\n'.join(_HANDLER_DEF[n] for n in _HORDER)
-    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': ''})
+    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': '', 'getter': GETTER if dyn else ''})
     _w(os.path.join(pkg, 'CalcLogic.java'), CALCLOGIC)
     _w(os.path.join(pkg, 'Core.java'), CORE_L3 % {
         'p_mix': _arr(bc['mix']), 'p_twist': _arr(bc['twist']), 'p_digest': _arr(bc['digest']),
         'dispfill': '\n'.join(dispfil),
         'methodrefs': '\n'.join(methodrefs),
-        'handlers': handlers})
+        'handlers': handlers, 'peek': _PEEK_ARR if dyn else ''})
     _write_payload('L3', bc)
     return 'no switch; opcode->handler via int[] table + Reflection Method[] invoke'
 
 
-def emit_L4(opmap, bc, pkg):
-    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': ''})
+def emit_L4(opmap, bc, pkg, dyn=False):
+    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': '', 'getter': GETTER if dyn else ''})
     _w(os.path.join(pkg, 'CalcLogic.java'), CALCLOGIC)
     _w(os.path.join(pkg, 'Core.java'), CORE_SWITCH % {
         'p_mix': _arr(bc['mix']), 'p_twist': _arr(bc['twist']),
-        'p_digest': _arr(bc['digest']), 'cases': _expr_cases(opmap, st='STACK')})
+        'p_digest': _arr(bc['digest']), 'cases': _expr_cases(opmap, st='STACK'),
+        'peek': _PEEK_ARR if dyn else ''})
     _write_payload('L4', bc)
     cases = sorted(opmap.values())
     return 'super-ops + randomized non-contiguous opcodes: %s' % \
         ' '.join('0x%02X' % v for v in cases)
 
 
-def emit_L5(opmap, bc, pkg):
-    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': ''})
+def emit_L5(opmap, bc, pkg, dyn=False):
+    _w(os.path.join(pkg, 'CalcActivity.java'), ACTIVITY % {'init': '', 'getter': ''})
     _w(os.path.join(pkg, 'CalcLogic.java'), CALCLOGIC_INLINE % {
         'p_mix': _arr(bc['mix']), 'p_twist': _arr(bc['twist']),
         'p_digest': _arr(bc['digest']),
@@ -457,6 +496,7 @@ EMIT = {'L1': emit_L1, 'L2': emit_L2, 'L3': emit_L3, 'L4': emit_L4, 'L5': emit_L
 
 
 def main():
+    dyn = '--dyn' in sys.argv          # 生成「动态版（debuggable）」源码：Worker 可 peek 载荷
     for lv in LEVELS:
         opmap = vmgen.level_opmap(lv)
         bc = vmgen.level_bytecode(lv)
@@ -466,7 +506,7 @@ def main():
             import shutil
             shutil.rmtree(base)
         pkg = os.path.join(base, 'com', 'demo', 'calc')
-        note = EMIT[lv](opmap, bc, pkg)
+        note = EMIT[lv](opmap, bc, pkg, dyn)
         with open(os.path.join(PAYLOADS, 'level_%s.map.json' % lv), 'w', encoding='utf-8') as f:
             json.dump({'level': lv, 'opmap': opmap, 'note': note}, f, indent=2)
         print('%-4s %s' % (lv, note))

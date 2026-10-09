@@ -577,8 +577,29 @@ python tools/devirt_dex.py samples/apks/app_l3.apk
 小方法」的三段拼接，所以如实报告；人做得到，动态也做得到。
 
 - **静态半自动（人读）**：`ensureInit` 的 `aput` 序列 → `h0..h6` 的字节码（如上）；
-- **动态（推荐）**：`frida/trace_dispatch.js` 在 `Method.invoke` 上下 hook，把每次
-  `(op, handler名)` 打出来，一条命令直接得到 opcode 表。
+- **动态（推荐，已实测）**：在**动态版**样本上跑 trace 脚本，直接读出「本机字节码 + 全表」：
+
+```bash
+# 前置：装 dyn 版（带一次性探针；正式样本故意不带，见 build/build_dyn.sh）
+adb install -r samples/apks/app_l3_dbg.apk
+python tools/trace_vm.py --package com.demo.calc --script frida/trace_dispatch.js
+#   => [prog] id=0 len=12 hex=010001010302110402030507      ← 本机字节码（与静态取到的一致）
+#   => [prog] id=1 len=9  hex=010002070502050607
+#   => [prog] id=2 len=15 hex=0100010105010001010403025a0407
+#   => [dispatch] assigned opcode range = 0x01..0x7 (out of 256; the rest stay default-0)
+#   => [opmap] opcode=0x01 -> slot=0 -> h0
+#   => [opmap] opcode=0x02 -> slot=1 -> h1
+#   => [opmap] opcode=0x03 -> slot=2 -> h2
+#   => [opmap] opcode=0x04 -> slot=3 -> h3
+#   => [opmap] opcode=0x05 -> slot=4 -> h4
+#   => [opmap] opcode=0x06 -> slot=5 -> h5
+#   => [opmap] opcode=0x07 -> slot=6 -> h6
+```
+
+**读**：`opcode → slot → handler` 全表一次到手。再回静态看 `h0..h6` 各是什么语义
+（`h2` 里有 `xor-int` → XOR，见上），**L3 的 opcode 表就完整还原了**。
+注意 `assigned opcode range = 0x01..0x7` 这行：`DISPATCH` 是 256 项、**默认全 0** 的表，
+只有被装配过的那 7 项有意义 —— 判据要用「连续前缀」而不是「非 0」（这是本 lab 踩过的坑）。
 
 ---
 
@@ -623,11 +644,25 @@ python tools/devirt_dex.py samples/apks/app_l4.apk
 **后果**：opmap 里 `0x22` 和 `0x9A` 都标成 `XOR` → 反汇编时二义；用错的映射去解码，
 字节码里出现 `0x3E`(ADDK) 时就没有正确解释 → **`未知 opcode` → 只能部分还原**。
 
-**怎么补**：
+**怎么补（已实测）**：动态版样本里 `CalcActivity.peek(id)` 能**直接给出字节码**：
+
+```bash
+adb install -r samples/apks/app_l4_dbg.apk
+python tools/trace_vm.py --package com.demo.calc --script frida/trace_dispatch.js
+#   => [prog] id=0 len=10 hex=650065019a3e11cb0357
+#   => [prog] id=1 len=9  hex=6500ca07a3ca05d457
+#   => [prog] id=2 len=15 hex=65006501a365006501d29aca5ad257
+```
+
+**读**：`0x65=LOADARG`、`0x9A=XOR`、`0x3E=ADDK`、`0xCB=MULK`、`0x57=RET` —— 对照上面的
+混淆表即可看出 `id=0` 是 `LOADARG:0 LOADARG:1 XOR ADDK:0x11 MULK:3 RET`，即
+`((a^b)+0x11)*3`。**融合算子的「立即数」在字节码里是明文**（`0x11`、`0x03` 就在
+`3E 11` / `CB 03` 里），只是在**静态读 case 体**时分不出来 —— 动态取到字节码后，
+配合「`0x3E` 是加法类」这个静态结论，就能确定它是 `ADDK` 而不是 `ADD`。
 
 - **静态（人读）**：逐个融合 case 读它是否「多读了一条 `aget-byte` 当立即数」——
   能分出 `ADD` vs `ADDK`，但要人做（本 lab 的工具不做这一步）；
-- **动态（推荐）**：trace 每次 handler 的入参，**直接读那个内联立即数的值** —— 这是最省事的。
+- **动态**：上面的 `peek` 路线一次拿到字节码，**最省事**。
 
 > **本档的教学点**：随机 opcode（V6）只是**抬高门槛**，真正卡住静态的是**融合算子**。
 > 这也是真实保护器的主要手法之一 —— 不是「换成随机数」，而是「把多条指令合成一条」，
@@ -773,11 +808,43 @@ python tools/devirt_so.py samples/native/libcalc_s3_arm64.so
 **S3（threaded / computed-goto）**：每个 handler 以 `goto *LBL[op]` 直接跳下一个 handler，
 形成一张 basic block 网。静态看到的是**一堆 `br x8` 互相跳**，**没有中心函数**可切。
 
-**两者的下一步都是动态**：
+**两者的下一步都是动态**（S2 已实测；S3 留作练习）：
 
-- S2：`frida/so_vm_trace.js` 在 `blr xN` 处 hook，记录每次跳到的 handler 地址 → 得到
-  `opcode → handler` 映射 → 再回 `llvm-objdump` 看那个 handler 体做什么；
-- S3：trace basic block 的转移序列（`Stalker`），还原控制流图。
+```bash
+python tools/trace_vm.py --package com.demo.calc --script frida/so_vm_trace.js
+# 前置：adb install -r samples/apks/app_s2.apk
+#   => [so] profile = S2 (handler table assembled at runtime)
+#   => [so] opcode=0x01 -> slot=3
+#   => [so] opcode=0x02 -> slot=4
+#   => [so] opcode=0x03 -> slot=0
+#   => [so] opcode=0x04 -> slot=6
+#   => [so] opcode=0x05 -> slot=2
+#   => [so] opcode=0x06 -> slot=1
+#   => [so] opcode=0xff -> slot=5
+#   => [so] slot=0 -> handler=0x1d94
+#   => [so] slot=1 -> handler=0x1d18
+#   => ... slot=3 -> handler=0x1d54 ...
+```
+
+**它怎么做到的**：S2 的 `OPMAP[]`（opcode→slot）与 `SLOT[]`（slot→handler 地址）是**有符号的
+静态变量**（`llvm-nm` 能看到：`OPMAP`/`SLOT`/`READY`），运行期被 `assemble()` 填好。脚本按
+「模块基址 + 符号偏移」直接读这两段内存 —— **这就是静态拿不到的那张表**。
+
+**把 handler 偏移喂回静态**，即得每条 opcode 的语义：
+
+```bash
+"$NDBIN/llvm-objdump.exe" -d samples/native/libcalc_s2_arm64.so --start-address=0x1d54 --stop-address=0x1d84
+#   => 0000000000001d54 <op_load>:   ← slot=3 -> 0x1d54 -> op_load
+#   => 0000000000001d94 <op_xor>:    ← slot=0 -> 0x1d94 -> op_xor
+#   => 0000000000001e48 <op_push>:   ← slot=4 -> 0x1e48 -> op_push
+```
+
+于是 **`opcode 0x01 = LOADARG`、`0x03 = XOR`、`0x04 = ADD`…**，与 S1/L1 的语义**完全一致**
+（同一份业务），但**分派表只存在于运行期** —— 这就是 S2 与 S1 的区别。
+
+- **S3 怎么继续**：threaded 分派**没有表**（`llvm-nm` 里没有 `OPMAP/SLOT`）。要还原
+  `opcode→handler` 只能挂 `Stalker` 记录 basic block 转移，再与 `.rodata` 的字节码对齐 ——
+  本 lab 的 `frida/so_vm_trace.js` 文末给了示例，**留作练习**（本档是本 lab 的诚实 WIP）。
 
 > **本档的诚实边界**：S2/S3 是本 lab 的 **WIP**（像 `uncrackable/l3` 那样如实记录），
 > 不假装已解。它们的价值是**证明「静态有边界」**：分派一去中心化，形状判据就只剩「定位」，
@@ -795,6 +862,19 @@ python tools/trace_vm.py --package com.demo.calc --script frida/oracle_run.js --
 #   => [oracle] digest(7,3)= 121  (expect 121)
 #   => [oracle-neg] mix(0,0)= 51  (expect 51 ≠ 63，负控)
 ```
+
+**本 lab 在三处用到了动态**（都在设备上实测过，见本章 §D/§E/§H）：
+
+| 档 | 动态脚本 | 拿到什么 |
+|---|---|---|
+| L3 | `frida/trace_dispatch.js` | 本机字节码 + `opcode→slot→handler` 全表 |
+| L4 | `frida/trace_dispatch.js` | 本机字节码（含融合算子的明文立即数） |
+| S2 | `frida/so_vm_trace.js` | `OPMAP[]`/`SLOT[]` 两段表 → `opcode→handler 地址` |
+| S1/S3 | `frida/so_vm_trace.js` | `.rodata` 三段只读字节码（S1 语义静态已有；S3 需 Stalker） |
+| 全部 | `frida/oracle_run.js` | 行为 oracle（含负控） |
+
+**前置**：目标须是 **dyn 版**（`samples/apks/app_lN_dbg.apk`，由 `build/build_dyn.sh` 生成；
+正式样本**故意不带**探针）。
 
 **为什么动态能兜住静态的缺口**（对照 §A 五步）：
 

@@ -74,4 +74,7 @@ for LV in L1 L2 L3 L4 L5; do
 done
 
 echo
-echo "[+] 下一步（设备）：逐个 adb install -r samples/apks/app_l*.apk 并看 adb logcat -s CALC"
+echo "[+] 下一步："
+echo "    - 行为 oracle（正式样本）：adb install -r samples/apks/app_l1.apk && adb logcat -s CALC"
+echo "    - 动态取真值（L3/L4 需要）：bash build/build_dyn.sh 生成 dyn 版，再"
+echo "      python tools/trace_vm.py --package com.demo.calc --script frida/trace_dispatch.js"

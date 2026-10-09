@@ -51,7 +51,7 @@ vmp/
 │   ├── AndroidManifest.xml
 │   └── com/demo/calc/{CalcLogic.java, CalcActivity.java}
 ├── samples/
-│   ├── apks/     13 APKs (golden + L1..L5 + S1..S3 + 4 negatives)
+│   ├── apks/     13 release APKs + 5 `app_lN_dbg.apk` (dynamic variants, §6.3)
 │   ├── dex/      golden.dex · level_L*.dex · level_S*.dex · neg_*.dex
 │   ├── payloads/ golden_ops.json · level_*.bin · level_*.map.json · so_*.map.json
 │   └── native/   libcalc_s{1,2,3}_{arm64,x86_64}.so
@@ -61,7 +61,7 @@ vmp/
 │                 dexscan detect_vm devirt_dex devirt_so nop_methods
 │                 verify_gen check_negatives trace_vm reset_lab
 │                 + ported: apkutil dexlib elfinspect envload
-├── build/        locate.sh · env.sh.example · build_{golden,vm,so,neg}.sh
+├── build/        locate.sh · env.sh.example · build_{golden,vm,so,neg,dyn}.sh
 ├── frida/        trace_dispatch.js · so_vm_trace.js · oracle_run.js
 ├── neg/          (empty dir; negative sources are GENERATED into build/gen/neg_*)
 └── logs/         (empty)
@@ -96,6 +96,7 @@ sources are **generated** into `build/gen/level_*` (DEX) and `build/gen/so_*` (S
 | `neg_bigswitch.apk` | 8587 | `f7687631e78b9eb7` |
 | `neg_hub.apk` | 8587 | `8684c2a0ff138808` |
 | `neg_extract.apk` | 8587 | `0be1a60927be8fd0` |
+| `app_l1_dbg.apk` … `app_l5_dbg.apk` | (see §6.3) | dynamic variants — same samples **plus** a `peek` probe |
 
 | native SO | bytes | sha256[:16] |
 |---|---|---|
@@ -416,12 +417,63 @@ S2/S3 are the honest WIP boundary (like `uncrackable/l3`): static can only class
 dispatch shape, not recover the mapping. The documented next step is dynamic tracing
 (`frida/so_vm_trace.js`).
 
-### 6.3 Dynamic route — `tools/trace_vm.py` + `frida/*.js`
+### 6.3 Dynamic route — `tools/trace_vm.py` + `frida/*.js` (measured on device)
 
 `trace_vm.py` is isomorphic with `uncrackable/tools/hook_run.py` (spawn → attach → load
 script → resume → sleep → detach/kill). It finds frida via the repo-root `.venv`
 (`frida 16.5.9`, pinned — 17.x drops the `Java` global the hooks need) or the current
 interpreter, and **`--device usb|<ip:port>`** selects the target.
+
+**Dual-application design** (`build/build_dyn.sh`, `build_levels.py --dyn`):
+
+| apk | contains | use |
+|---|---|---|
+| `app_lN.apk` (release) | the protected sample **only** | static/defensive analysis; **no probe** |
+| `app_lN_dbg.apk` (dyn) | same, **plus** `CalcActivity.peek(int)` + `Core.peekCode/wipe` | dynamic truth extraction |
+
+The probes are compiled only under `--dyn`; `build_dyn.sh` regenerates dyn sources,
+builds, and a shell `trap` restores the canonical (probe-free) sources on exit. Verified:
+release dexes have **0** `peekCode` methods, dyn dexes have them. Both share one package
+name (`com.demo.calc`), so install one at a time.
+
+**Measured results (Pixel 2 XL, arm64/Android 11, frida 16.5.9):**
+
+```
+$ python tools/trace_vm.py --package com.demo.calc --script frida/trace_dispatch.js   # L3 dbg
+[prog] id=0 len=12 hex=010001010302110402030507
+[prog] id=1 len=9  hex=010002070502050607
+[prog] id=2 len=15 hex=0100010105010001010403025a0407
+[dispatch] assigned opcode range = 0x01..0x7 (out of 256; the rest stay default-0)
+[opmap] opcode=0x01 -> slot=0 -> h0   ... 0x07 -> slot=6 -> h6
+
+$ python tools/trace_vm.py --package com.demo.calc --script frida/so_vm_trace.js      # S2
+[so] profile = S2 (handler table assembled at runtime)
+[so] opcode=0x01 -> slot=3   ... 0xff -> slot=5
+[so] slot=3 -> handler=0x1d54        # -> llvm-objdump shows <op_load>
+[so] slot=0 -> handler=0x1d94        # -> <op_xor>
+[so] slot=4 -> handler=0x1e48        # -> <op_push>
+```
+
+`so_vm_trace.js` reads S2's runtime-assembled `OPMAP[256]`/`SLOT[8]` (static-but-filled-at-
+runtime globals, addresses from `llvm-nm`: `OPMAP=0x4089 SLOT=0x4190`). Feeding the handler
+offsets back to `llvm-objdump -d` gives `op_load`/`op_xor`/`op_push` — i.e. the
+`opcode→semantics` table, which is **exactly what static cannot get**. S1/S3 have no such
+table, so the script dumps the `.rodata` bytecode instead (S3's opcode mapping still needs
+Stalker — left as the documented WIP).
+
+**frida 16.5.9 gotchas hit while building this** (recorded so the next agent doesn't):
+
+- `fld.get(null)` on a `static int[]` returns an opaque object; `.length` and indexing are
+  `undefined`. Read it via `Java.use('java.lang.reflect.Array').getLength/get`.
+- `Array.get` returns a boxed object; `parseInt(String(x),10)` before numeric compare.
+- The two `int[]`/`Method[]` elements stringify fine via `.toString()`, but `Method.getName()`
+  does **not** exist on the wrapper — parse the name out of `toString()` instead.
+- `CalcActivity.peek()` must **not** wipe on read (the trace reads 3 programs); make it
+  read-only and call `wipe()` once at the end.
+- L2's payload is loaded in `onCreate`; script `load()` precedes it. Hook `Core.init(Context)`
+  to capture the context, or wait ~2.5 s before probing.
+- `DISPATCH[256]` is **default-0**, so "non-zero" over-reports: `0x08`, `0x09`… look assigned.
+  Use the contiguous prefix `DISPATCH[op]==op-1` (range is `0x01..0x07`) instead.
 
 > ⚠️ `trace_vm.py` **installs and launches the target app on the connected device**.
 > Only run it on a device you are authorized to use or on the local `n4tive_lab` AVD.
@@ -481,6 +533,7 @@ bash build/build_golden.sh          # samples/apks/app_golden.apk + samples/dex/
 bash build/build_vm.sh              # app_l1..l5.apk + level_L*.dex
 bash build/build_so.sh              # app_s1..s3.apk + samples/native/libcalc_s*.so
 bash build/build_neg.sh             # neg_*.apk
+bash build/build_dyn.sh             # app_l1..l5_dbg.apk (dynamic route; probe-bearing)
 python tools/verify_gen.py && python tools/check_negatives.py
 python tools/reset_lab.py backup
 ```

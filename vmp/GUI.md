@@ -307,6 +307,27 @@ IDA 里看着也很像。**只有两个 `w` 寄存器的 `add/sub` 才算数据�
 
 ---
 
+## 动态路线（图形工具的下一步）
+
+静态 GUI 到不了的地方（L3 反射分派 / L4 融合算子 / S2 运行期装配 / S3 threaded），
+真值只在运行期。GUI 路线在这里**不自己跑脚本**，而是：先看 `SCRIPT.md`「脱壳」章拿到的
+动态输出，再回到图形工具里**核对**：
+
+| 动态拿到的东西 | 回 GUI 核对什么 |
+|---|---|
+| L3 的 `opcode → h0..h6` 表 | jadx-gui 里点开 `h0..h6`，逐个确认语义（`h2` 内有 `xor` → XOR） |
+| L4 的本机字节码（含 `0x11` 等明文立即数） | jadx-gui 里看 `sparse-switch` 的 case 体，确认「`0x3E` 是加法类」 |
+| S2 的 `handler 地址` | IDA/Ghidra 里按 `G` 跳到该地址，看是 `op_load`/`op_xor`，并对照符号名 |
+| S1/S3 的 `.rodata` 字节码 | 010 Editor 打开 `.so` 跳到 `.rodata` 偏移，与 dump 的字节逐字节对照 |
+
+**前置**：动态要在 **dyn 版**样本上跑（`samples/apks/app_lN_dbg.apk`）——
+它比正式样本多一个一次性探针（`CalcActivity.peek/wipe`）。
+
+> 本 lab 的 frida 版本钉在 **16.5.9**（host 与设备 frida-server 必须同版本）。图形工具本身
+> 不参与 frida，只负责「读懂动态取到的东西」。
+
+---
+
 ## 决策流程（图形工具版）
 
 ```text

@@ -106,3 +106,4 @@ uncrackable/tools/frida-server*
 
 # vmp lab: optional fetched open-source external targets (build/fetch_external.ps1)
 vmp/tools/external/
+**/build/dyn/
