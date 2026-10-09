@@ -364,7 +364,7 @@ print(bytes(b^key[i%len(key)] for i,b in enumerate(enc)).hex(' '))
 
 > **本档的教学点**：L1→L2 的差别**只在第 ② 步**（找载体 + 解密）。分派形态（①③④）没变。
 
-### L3：无 switch，反射分派（本路线读不出 opmap）
+### L3：无 switch，反射分派（opmap 藏在运行期装配里）
 
 ```bash
 unzip -o -q samples/apks/app_l3.apk classes.dex -d analysis_output/cli/
@@ -379,8 +379,31 @@ unzip -o -q samples/apks/app_l3.apk classes.dex -d analysis_output/cli/
 #   => invoke-virtual {v4, v6, v5}, Method;.invoke(...)         ← 反射调用
 ```
 
-**读法**：分派是「表查两次 + 反射调用」。**没有一个 switch 可以把 case 体切出来** ——
-opmap 藏在 `DISPATCH` 的**运行期填充**与 `h0..h6` 小方法里，通用命令读不出来。→ 转动态。
+**opcode→语义 的表藏在 `ensureInit()` 里**（通用命令能看见，但要人眼翻译）：
+
+```bash
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk "/name          : 'ensureInit'/{f=1} f" | head -30 | grep -E "aput|const/4"
+#   => aput v2, v1, v3   (DISPATCH[1] = 0)      ← opcode 0x01 -> 槽位 0
+#   => aput v3, v1, v4   (DISPATCH[2] = 1)      ← opcode 0x02 -> 槽位 1
+#   => ... 一直到 DISPATCH[7] = 6
+```
+
+**每个 handler 的语义**在 `h0..h6` 里（每个只有二十来条指令，能读）：
+
+```bash
+"$BT/dexdump.exe" -d analysis_output/cli/classes.dex | awk "/name          : 'h2'/{f=1} f" | sed -n '9,25p'
+#   => ... aget v0, v5, v0 ; ... xor-int v4, v0, v6 ; aput v4, v5, v1   ← 弹两个、异或、压回 = XOR
+```
+
+**读法**：把两者拼起来 —— `DISPATCH[3]=2`（看常量 2 那个）→ 槽位 2 → `HM[2]`.
+
+> 这个 opcode→vm-语义 的表推得出来 —— **但需要人读 `ensureInit` 的常量表 + 读 `h0..h6` 的字节码
+> 再拼起来**，通用命令不能自动切 case。更省事的是动态：
+> `frida/trace_dispatch.js` 直接打「每次 op → 调到的 handler」，一条命令拿到表。
+>
+> ⚠️ **别被名字骗**：`HM` / `DISPATCH` / `h0..h6` 这些名字能一眼认出来（本 lab 没有混淆
+> DEX 侧），但**真实保护器会把这些名字也混淆成 `a/b/c`** —— 所以判据不能靠名字，要看
+> 「`Method[]` + `int[]` 表 + `invoke`」这个**结构**。名字只是人读时的方便。
 
 ### L4：融合算子 + 随机 opcode（本路线只能读形态）
 

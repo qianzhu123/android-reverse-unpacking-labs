@@ -535,8 +535,37 @@ L3 **没有 `switch`**。看 `Core.run`（`dexdump -d`，完整见 CLI）：
 ```
 
 **读**：分派是「`DISPATCH[op]` → 在 `Method[]` 里取方法 → `invoke`」。**没有一个 switch
-可以把 case 体切出来做指纹** —— opcode 表藏在 `DISPATCH` 数组的**运行期填充**里，而每个
-handler 的语义藏在 `h0..h6` 这些小方法里（要靠动态或更复杂的静态数据流分析把它们连起来）。
+可以把 case 体切出来做指纹** —— opcode 表藏在 `DISPATCH` 数组的**运行期填充**里：
+
+```text
+Core.ensureInit()（运行期装配 [DISPATCH] 与 [HM]）：
+000956: sget DISPATCH;  0x95e: aput v2=0 -> DISPATCH[1]   ← opcode 0x01 -> 槽位 0
+000962: sget DISPATCH;  0x968: aput v3=1 -> DISPATCH[2]   ← opcode 0x02 -> 槽位 1
+00096c: ...              一直到 aput v8=6 -> DISPATCH[7]   ← opcode 0x07 -> 槽位 6
+00099e: new-array [Ljava/lang/Class;  ← 后面建 sig 数组
+        HM = { getDeclaredMethod("h0",sig), ... "h6" }
+```
+
+而每个 handler 的语义在 `h0..h6` 里 —— 它们**只有二十来条指令**，能读：
+
+```text
+Core.h2:([B[I[I[I)I            ← 收 (code, regs, STACK, args)
+0006a2: aget v6, v4, v3         ← 从栈弹一个
+0006a6: sub-int/2addr v6, v3
+0006ac: aget v6, v5, v6         ← 再弹一个
+0006ca: xor-int v4, v0, v6      ← 异或
+0006ce: aput v4, v5, v1         ← 压回
+0006d2: return v3               ← 返回 1（继续循环）
+=> 这就是 XOR
+```
+
+**所以这一档「静态能不能解」取决于你怎么定义「解」**：
+
+- **要靠工具自动切 case（像 L1 那样）**：不行 —— 没有 switch 可切。`devirt_dex.py` 会
+  明确报告「静态不够」；
+- **要人工还原**：**可以** —— 读 `ensureInit` 的常量表（7 条 `aput`）得到 `opcode → 槽位`，
+  再读 `HM` 的 `getDeclaredMethod("hN")` 顺序得到 `槽位 → handler`，最后读 `h0..h6` 得到语义。
+  **但这是人读 20×7 条指令，不是工具一键完成**。
 
 ```bash
 python tools/devirt_dex.py samples/apks/app_l3.apk
@@ -544,13 +573,12 @@ python tools/devirt_dex.py samples/apks/app_l3.apk
 #   => (static devirtualization insufficient — dynamic route required)
 ```
 
-**这就是本档的诚实边界**：`devirt_dex.py` **明确报告「静态不够」而不是硬猜**。
-可选的两个下一步：
+**这就是本档的边界，而且它是「工具有边界」而不是「不可能」**：工具不做「反射目标 + 常量表 +
+小方法」的三段拼接，所以如实报告；人做得到，动态也做得到。
 
-- **静态半自动**：人工把 `h0..h6` 六个 handler 的字节码读一遍（每个只有几行），能推出
-  语义 —— 但这要人读，不是「工具自动切 case」；
-- **动态**：`frida/trace_dispatch.js` 在 `Method.invoke` 上下 hook，把每次 `(op, handler名)`
-  打出来，直接得到 opcode 表。
+- **静态半自动（人读）**：`ensureInit` 的 `aput` 序列 → `h0..h6` 的字节码（如上）；
+- **动态（推荐）**：`frida/trace_dispatch.js` 在 `Method.invoke` 上下 hook，把每次
+  `(op, handler名)` 打出来，一条命令直接得到 opcode 表。
 
 ---
 
