@@ -320,6 +320,31 @@ IDA 里看着也很像。**只有两个 `w` 寄存器的 `add/sub` 才算数据�
 | S2 的 `handler 地址` | IDA/Ghidra 里按 `G` 跳到该地址，看是 `op_load`/`op_xor`，并对照符号名 |
 | S1/S3 的 `.rodata` 字节码 | 010 Editor 打开 `.so` 跳到 `.rodata` 偏移，与 dump 的字节逐字节对照 |
 
+### 「dyn 版」是什么（图形工具看不懂它，但要知道有它）
+
+动态脚本要读那段自定义字节码，而正式样本里它可能在加密的 `assets` 里 —— 所以本 lab
+把同一样本编成两份（`bash build/build_dyn.sh`）：
+
+| APK | 内容 |
+|---|---|
+| `app_lN.apk`（正式） | 样本本体，**无探针**（图形工具前面各节看的都是它） |
+| `app_lN_dbg.apk`（dyn） | 同一样本 **+ 一次性探针** `CalcActivity.peek/wipe` |
+
+- 探针只在 dyn 版：用 jadx-gui 打开 `app_l3_dbg.apk` 能看到 `CalcActivity.peek`，
+  打开 `app_l3.apk` **看不到** —— 这就是「正式样本不留后门」的图形证据；
+- 两版同包名，装一个即可；
+- **你不必自己去写 frida**：跑 `SCRIPT.md`「脱壳 §I」给的命令，把输出贴回来对着
+  图形工具核对即可。
+
+**读动态输出时的三个要点**（在 jadx-gui / IDA 里核对）：
+
+1. **L3 的 `opcode→hN` 表**：jadx-gui 里点开 `h0..h6`，确认 `h2` 里有 `xor`（= XOR）、
+   `h3` 里有 `add`（= ADD）—— 对上了，表就可信；
+2. **S2 的 handler 地址**：IDA 里按 `G` 跳到 `0x1d54`，看到函数名 `op_load` —— 与
+   `opcode 0x01 → slot 3 → 0x1d54` 串起来，即 `0x01 = LOADARG`；
+3. **L4 的字节码**：`peek` 给出 `3E 11`，jadx-gui 里 `case 0x3E` 是 `[sp-1] + imm` ——
+   串起来即 `ADDK 0x11`（静态只能认出「加法类」，出现分歧的就是这里）。
+
 **前置**：动态要在 **dyn 版**样本上跑（`samples/apks/app_lN_dbg.apk`）——
 它比正式样本多一个一次性探针（`CalcActivity.peek/wipe`）。
 

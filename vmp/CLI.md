@@ -515,7 +515,47 @@ sha256sum samples/native/libcalc_s1_arm64.so
 
 > **注意 `RET` 的 opcode：SO 是 `0xFF`，DEX 是 `0x07`** —— 两套 VM 各自的约定。
 
+### 动态取真值：先搞清「dyn 版」是怎么回事
+
+动态脚本要读到那段自定义字节码，但正式样本里它可能在加密的 `assets` 或在方法体里。
+本 lab 因此把同一样本编成**两个版本**（`bash build/build_dyn.sh`）：
+
+| APK | 内容 | 用途 |
+|---|---|---|
+| `app_lN.apk`（正式） | 样本本体，**无探针** | 静态/防守分析（CLI 路线前面各节的对象） |
+| `app_lN_dbg.apk`（dyn） | 同一样本 **+ 一次性探针** `CalcActivity.peek/wipe` | 动态取真值 |
+
+- **探针只在 dyn 版**：正式样本 dex 里 `peekCode` 方法数 = 0，`_dbg` 版 > 0（可用
+  `"$BT/dexdump.exe" -d samples/dex/level_L3_dbg.dex | grep -c peekCode` 自查）。
+- **两版同包名**，`adb install -r` 后装的顶掉前一个。
+- 真实场景里对应的做法是**内存读**（例如下面的 S2）——`so_vm_trace.js` 读 S2 的分派表
+  **完全没有依赖探针**，是纯 `基址 + 符号偏移` 的内存读。
+
+### 三个 trace 脚本各干什么
+
+| 脚本 | 目标 | 怎么拿真值 |
+|---|---|---|
+| `frida/trace_dispatch.js` | L3 / L4（DEX） | 调 `peek` 取字节码；`reflect.Array` 读 `static int[] DISPATCH` + `Method[] HM` → `opcode→slot→handler` |
+| `frida/so_vm_trace.js` | S2 / S1 / S3（SO） | `模块基址 + llvm-nm 符号偏移` 读 `OPMAP[]`/`SLOT[]`；S1/S3 无表则 dump `.rodata` 的 `P_*` |
+| `frida/oracle_run.js` | 全部 | 主动调 `mix/twist/digest`，比对黄金值（**含负控**） |
+
 ### S2 / S3：分派在运行期才装配 —— 通用命令到此为止，改走动态取真值
+
+**先看清「为什么静态读不到」**：S2 的分派表是**运行期装配的全局变量**，但它们是**有符号的**，
+`llvm-nm` 能给出地址 —— 只是**内容是空的**（未装配时）或运行期才被填：
+
+```bash
+# 静态：符号在，能拿到地址与大小
+"$NDBIN/llvm-nm.exe" samples/native/libcalc_s2_arm64.so | grep -E "OPMAP|SLOT|READY"
+#   => 0000000000004089 b OPMAP     ← opcode→slot 的表（256 B）
+#   => 0000000000004190 b SLOT      ← slot→handler 地址 的表（64 B）
+#   => 0000000000004088 b READY     ← 装配完成标志（静态时是 0）
+
+# 静态：内容还没有（表是空的/全 0xFF），所以通用命令读不出映射
+"$NDBIN/llvm-readelf.exe" -x .bss samples/native/libcalc_s2_arm64.so | head -3
+```
+
+**运行期才有内容** —— 所以要用 frida 按同一地址读那段内存（见下面的脚本）。
 
 > ⚠️ 下面的 `frida` 属**动态工具**；本文件（CLI）平时只讲通用命令，这一节是**例外**，
 > 因为 S2/S3 的 opcode→handler 映射**只存在于运行期**，没有任何静态命令能读出来。

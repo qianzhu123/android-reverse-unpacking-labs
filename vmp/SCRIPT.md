@@ -48,7 +48,8 @@
 | `nop_methods.py` | 造 `neg_extract`（旧式函数抽取）负样本 | 判定 |
 | `verify_gen.py` | **语义 oracle**：样本字节码回放 == 黄金答案 | 验证 |
 | `check_negatives.py` | **双向回归断言**（正向必中 / 负向必不中） | 判定 / 反复练习 |
-| `trace_vm.py` `frida/*.js` | 动态路线（静态搞不定时兜底） | 脱壳 |
+| `trace_vm.py` `frida/*.js` | **动态路线**：跑 frida 脚本，取运行期真值 | 脱壳 §I |
+| `build/build_dyn.sh` | 生成 **dyn 版**样本（正式样本 + 一次性探针） | 脱壳 §I |
 
 **样本阶梯**（`samples/`）：
 
@@ -64,6 +65,7 @@
 | `app_s2.apk` + `libcalc_s2_arm64.so` | S2 | native 分派运行期装配（间接调用） | VN1 + VN2 |
 | `app_s3.apk` + `libcalc_s3_arm64.so` | S3 | native **threaded** 分派（basic block 网） | VN1 + VN2 |
 | `neg_plain / neg_bigswitch / neg_hub / neg_extract` | 负样本 | 干净 / 大状态机 / 汇聚调用但非解释器 / 旧式抽取 | **必须不报 VM** |
+| `app_l1_dbg .. app_l5_dbg.apk` | **dyn 版** | 与 L1..L5 同源，**多一个一次性探针** `peek/wipe` | 用于动态取真值（§I） |
 
 > **命名约束**：所有样本的包名（`com.demo.calc`）、类名（`CalcLogic`/`Core`）、资源名
 > （`core_a.dat`）、签名别名（`CALC`）与锚点串（`ANCHOR-0001:LOGIC-MIX`）**都不含**
@@ -86,14 +88,16 @@ vmp/
 ├── neg/                                # （负样本源码同样由 build_negatives.py 生成）
 ├── samples/
 │   ├── apks/     app_golden.apk · app_l1..l5.apk · app_s1..s3.apk · neg_*.apk
+│   │             · app_l1..l5_dbg.apk（dyn 版：多一个一次性探针，见 §I）
 │   ├── dex/      golden.dex · level_L1..L5.dex · level_S1..S3.dex · neg_*.dex
+│   │             · level_L1..L5_dbg.dex（dyn 版）
 │   ├── payloads/ golden_ops.json · level_*.bin · level_*.map.json · so_*.map.json
 │   └── native/   libcalc_s{1,2,3}_{arm64,x86_64}.so
 ├── pristine/     samples/ 的 sha256 基线（reset_lab.py 用）
 ├── analysis_output/
 ├── tools/        （见上表）+ 复用自 ajiami 的 apkutil/dexlib/elfinspect/envload/reset_lab
-├── build/        locate.sh · env.sh.example · build_{golden,vm,so,neg}.sh
-├── frida/        trace_dispatch.js · so_vm_trace.js · oracle_run.js
+├── build/        locate.sh · env.sh.example · build_{golden,vm,so,neg,dyn}.sh
+├── frida/        trace_dispatch.js（DEX 层）· so_vm_trace.js（SO 层）· oracle_run.js（行为 oracle）
 └── logs/
 ```
 
@@ -893,6 +897,82 @@ python tools/trace_vm.py --package com.demo.calc --script frida/oracle_run.js --
 **前置**：目标须是 **dyn 版**（`samples/apks/app_lN_dbg.apk`，由 `build/build_dyn.sh` 生成；
 正式样本**故意不带**探针）。
 
+#### §I.1 双版本应用（dyn 版怎么来的、为什么要有）
+
+动态 trace 要读到**那段自定义字节码**——但正式样本里它可能在 `assets`（加密）或在方法体里，
+脚本读不到。本 lab 的做法是：**同一份样本编两个版本**，用 `build/build_dyn.sh` 生成 dyn 版：
+
+| APK | 内容 | 用途 |
+|---|---|---|
+| `app_lN.apk`（正式，`build_vm.sh`） | 受保护样本**本体，无任何探针** | 静态/防守分析；`detect_vm`/`devirt_dex` 的对象 |
+| `app_lN_dbg.apk`（dyn，`build_dyn.sh`） | 同一样本 **+ 一次性探针** | 动态取真值（本节的脚本用） |
+
+探针只有两个方法，且**只在 `--dyn` 时编译**：
+
+```java
+// CalcActivity（dyn 版才有）
+public static byte[] peek(int id) { return Core.peekCode(id); }   // 读某 id 的载荷字节码（只读）
+public static void   wipe()       { Core.wipe(); }                 // 读完后清空，进程里不留东西
+
+// Core（dyn 版才有）
+public static byte[] peekCode(int id) { ... }                      // L2 是从 CACHE 切段；其余取 P_*
+public static void   wipe() { ... }
+```
+
+**关键点**：
+
+- **正式样本不含探针** —— 已核实：`samples/apks/app_lN.apk` 的 dex 里 `peekCode` 方法数 = **0**，
+  而 `app_lN_dbg.apk` 里 > 0。所以「受保护样本本身不留后门」这条边界仍然成立；
+- **两版同包名**（`com.demo.calc`）、**同 opcode 表**、**同行为** —— 装一个即可，`adb install -r`
+  时后装的会顶掉前一个（签名相同）；
+- `build_dyn.sh` 用 shell `trap` 在退出时把 `build/gen/` **还原成无探针的正式源**，避免污染构建。
+
+**为什么这样设计**（而不是「直接在正式样本里塞探针」）：正式样本要能当**防守对象**用 ——
+如果一个 VMP 样本自带「把字节码交出来」的方法，那它就不是一个诚实的靶子了。把探针隔离到
+另一个 APK，既能让学习者拿到真值，又不污染靶子本身。真实场景里对应的做法是**动态 hook /
+内存 dump**（本 lab 的 `so_vm_trace.js` 读 S2 的表就是纯内存读，没依赖任何探针）。
+
+#### §I.2 三个 trace 脚本各自怎么工作
+
+| 脚本 | 目标 | 机制 | 实测输出（节选） |
+|---|---|---|---|
+| `trace_dispatch.js` | DEX 层（L3 反射 / L4 融合） | 调 `CalcActivity.peek()` 取字节码；用 `java.lang.reflect.Array` 读 `static int[] DISPATCH` 与 `Method[] HM`，拼出 `opcode→slot→handler` | `[opmap] opcode=0x03 -> slot=2 -> h2` |
+| `so_vm_trace.js` | SO 层（S2 / S1 · S3） | 按「模块基址 + `llvm-nm` 符号偏移」读 `OPMAP[]`/`SLOT[]`；S1/S3 无表则 dump `.rodata` 的 `P_*` | `[so] slot=3 -> handler=0x1d54` |
+| `oracle_run.js` | 全部 | 主动调 `CalcLogic.mix/twist/digest` 并打印（**含负控**） | `[oracle] mix(7,3) = 63` / `[oracle-neg] mix(0,0) = 51` |
+
+**`trace_dispatch.js` 读 L3 表的核心**（frida 16.5.9 的写法，踩过坑）：
+
+```javascript
+var JArr = Java.use('java.lang.reflect.Array');           // raw Java 数组 .length 是 undefined
+var DISPATCH = Java.use('...Core').class.getDeclaredField('DISPATCH'); DISPATCH.setAccessible(true);
+var d = DISPATCH.get(null);
+var n = JArr.getLength(d);                                // 必须走 reflect.Array
+function num(x) { return parseInt(String(x), 10); }       // frida 把 int 包成对象，比较前要转
+```
+
+**`so_vm_trace.js` 读 S2 表的核心**（不需要任何探针，纯内存读）：
+
+```javascript
+var base = Process.findModuleByName('libcalc.so').base;
+var OPMAP = new Uint8Array(base.add(0x4089).readByteArray(256));   // 偏移来自 llvm-nm
+var handler = base.add(0x4190).add(slot * 8).readPointer();        // SLOT[slot]
+```
+
+#### §I.3 环境指纹（动态结论的可复现锚点）
+
+自建样本靠 `sha256` 复现；**动态结论靠环境指纹复现**（换环境结论可能变）：
+
+| 项 | 本 lab 实测值 |
+|---|---|
+| 设备 | Pixel 2 XL（`taimen`）/ arm64-v8a / Android 11 |
+| host frida（仓内 `.venv`） | **16.5.9** |
+| 设备 frida-server | **16.5.9**（`/data/local/tmp/frida-server`，root 启） |
+| 二者版本必须一致 | 否则 `Java is not defined`（17.x 去掉了 `Java` 全局） |
+
+> **本 lab 的样本是自建的**，所以既能静态复现（`sha256` + `verify_gen`）也能动态复现
+> （环境指纹 + `oracle_run`）。真实目标没有 `pristine` 基线，只有环境指纹 —— 见本仓
+> `PROMPT-REAL.md` 与 `uncrackable/`。
+
 **为什么动态能兜住静态的缺口**（对照 §A 五步）：
 
 | 静态卡在 | 动态怎么补 |
@@ -1022,9 +1102,11 @@ adb logcat -s CALC
    ├─ 随机 opcode + 融合算子                      -> 静态部分还原，转 ③
    └─ native threaded（computed-goto）           -> 转 ③
 
-③ 动态兜底
-   python tools/trace_vm.py --package <pkg> --script frida/trace_dispatch.js
+③ 动态兜底（先用 bash build/build_dyn.sh 生成 dyn 版并装上）
+   DEX 层：python tools/trace_vm.py --package com.demo.calc --script frida/trace_dispatch.js
+   SO  层：python tools/trace_vm.py --package com.demo.calc --script frida/so_vm_trace.js
    （在你有权操作的设备/模拟器上；trace 出 opcode→handler 映射后回到 ② 的名字做还原）
+   前置：换 frida 版本要 host 与设备一致；探针只在 dyn 版里（见 §I.1）
 
 ④ 验证
    python tools/verify_gen.py         # 语义 oracle（静态）
@@ -1049,6 +1131,10 @@ python tools/reset_lab.py restore --force
 
 **推荐练习循环**：`reset_lab.py restore` → 改 `tools/vmlang.py` 的 `PROGRAMS`（换一组表达式）
 → `python tools/vmgen.py emit` → 重跑 `build/*.sh` → `verify_gen.py` 必须仍 ALL OK。
+
+**动态练习循环**（需要设备/模拟器）：`bash build/build_dyn.sh` → `adb install -r samples/apks/app_l3_dbg.apk`
+→ 跑 `trace_vm.py + frida/trace_dispatch.js` 拿 `opcode→handler` 表 → 对照 `samples/payloads/level_L3.map.json`
+验证「动态取到的表 == 生成时的表」。**这是「动态取真值」这条路的自检**。
 
 ---
 
@@ -1083,6 +1169,30 @@ python tools/reset_lab.py restore --force
 7. **assets 读取不能用 `in.available()` 当长度**。Android 的 `AssetManager` 解压流上
    `available()` 可能返回 0，读出来是空的 —— 表现为「同一份样本时好时坏（0 或正确值）」。
    必须读到 EOF（本 lab 的 L2 `Core.load` 已改成 `ByteArrayOutputStream` 循环读）。
+
+### 动态路线的坑（本 lab 实测）
+
+1. **探针只在 dyn 版**。忘了 `bash build/build_dyn.sh` 就跑 trace，脚本会报
+   `no CalcActivity.peek — 不是 dyn 版`。正式样本**故意**不带探针（见 §I.1）。
+2. **frida 读 `static int[]` 不能用 `.length`/`[i]`**（16.5.9 返回的是包装对象，全是
+   `undefined`）。必须走 `Java.use('java.lang.reflect.Array')` 的 `getLength/get`。
+3. **frida 把 Java `int` 包成对象**：`disp[op] === 3` 恒 false。比较前先
+   `parseInt(String(x), 10)`。
+4. **`Method.getName()` 在 frida 包装上不存在**：从 `toString()`（形如
+   `static int com.demo.calc.Core.h2(byte[],...)`）里正则解析出名字。
+5. **`peek` 必须只读、不能读一次就清**：trace 要连读 3 段字节码；清空放到最后显式
+   `wipe()` 一次（本 lab 第一版写成「读一次清一次」，结果只拿到第一段）。
+6. **L2 的载荷在 `onCreate` 才 load**，而脚本 `load()` 早于它 → spawn 后等 ~2.5s，或 hook
+   `Core.init(Context)` 先拿 Context 再补调一次。
+7. **`DISPATCH[256]` 默认全 0**：用「非 0」判定会把 `0x08/0x09…` 全算进来（误报）。
+   要用**连续前缀** `DISPATCH[op] == op-1`（本样本装配范围是 `0x01..0x07`）。
+8. **SO 符号偏移随构建变**：`so_vm_trace.js` 里的 `OPMAP/SLOT/P_*` 偏移是
+   `llvm-nm` 取的具体值；**换构建后必须重取**，否则读到垃圾或访问违例（S2 与 S1/S3
+   的 P_* 偏移不同 —— S2 的 `.rodata` 在 `0x550`，S1/S3 在 `0x548/0x5d0`）。
+9. **host frida 与设备 frida-server 必须同版本**（本 lab 钉 16.5.9）。不一致 → 连不上或
+   `Java is not defined`。
+10. **别在真机上做无谓操作**：`trace_vm.py` 会**安装并启动**目标 app。只在你**有权操作**
+    的设备或本地模拟器（`n4tive_lab` AVD）上跑。
 
 ### 速查
 
